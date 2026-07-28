@@ -293,6 +293,7 @@
           const [candidateTextAnswers, setCandidateTextAnswers] = useState({});
           const [startTime, setStartTime] = useState(null);
           const [elapsedSeconds, setElapsedSeconds] = useState(0);
+          const [tabSwitchCount, setTabSwitchCount] = useState(0);
 
           // Inspection Modal State
           const [selectedSubmission, setSelectedSubmission] = useState(null);
@@ -306,7 +307,8 @@
             correct: 'A', explanation: ''
           });
 
-          // Admin Create Exam Form State
+          // Admin Create/Edit Exam Form State
+          const [editingExamId, setEditingExamId] = useState(null);
           const [newExamForm, setNewExamForm] = useState({
             title: 'Senior Data Analytics SQL Challenge',
             timeLimitMinutes: 20,
@@ -318,6 +320,54 @@
           useEffect(() => { localStorage.setItem('yassir_qbank', JSON.stringify(questionBank)); }, [questionBank]);
           useEffect(() => { localStorage.setItem('yassir_exams', JSON.stringify(exams)); }, [exams]);
           useEffect(() => { localStorage.setItem('yassir_submissions', JSON.stringify(submissions)); }, [submissions]);
+
+          // ANTI-CHEATING PROTECTION LISTENERS DURING ACTIVE EXAM
+          useEffect(() => {
+            if (route !== 'candidate_exam' || candidateSlide < 1 || candidateSlide > activeQuestions.length) return;
+
+            const handlePreventCopy = (e) => {
+              e.preventDefault();
+              showToast("Copying content is disabled during the exam!", "error");
+            };
+
+            const handlePreventContextMenu = (e) => {
+              e.preventDefault();
+            };
+
+            const handleKeyDown = (e) => {
+              if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.key === 'u' || e.key === 'U' || e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                showToast("Keyboard shortcuts disabled during exam!", "error");
+              }
+              if (e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j'))) {
+                e.preventDefault();
+              }
+            };
+
+            const handleVisibilityChange = () => {
+              if (document.hidden) {
+                setTabSwitchCount(prev => {
+                  const newCount = prev + 1;
+                  showToast(`Warning: Screen/Tab switch detected! (${newCount} times)`, "error");
+                  return newCount;
+                });
+              }
+            };
+
+            window.addEventListener('copy', handlePreventCopy);
+            window.addEventListener('cut', handlePreventCopy);
+            window.addEventListener('contextmenu', handlePreventContextMenu);
+            window.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+
+            return () => {
+              window.removeEventListener('copy', handlePreventCopy);
+              window.removeEventListener('cut', handlePreventCopy);
+              window.removeEventListener('contextmenu', handlePreventContextMenu);
+              window.removeEventListener('keydown', handleKeyDown);
+              document.removeEventListener('visibilitychange', handleVisibilityChange);
+            };
+          }, [route, candidateSlide, activeQuestions.length]);
 
           // Keep ref of adminAuth to avoid stale closures in hashchange listener
           const adminAuthRef = React.useRef(adminAuth);
@@ -438,6 +488,7 @@
               mcqTotal: mcqTotal,
               percentage: mcqTotal > 0 ? Math.round((score / mcqTotal) * 100) : 0,
               timeTakenSeconds: elapsedSeconds,
+              tabSwitches: tabSwitchCount,
               submittedAt: new Date().toLocaleString()
             };
 
@@ -446,24 +497,64 @@
             showToast("Exam submitted successfully! Results saved to repository.");
           };
 
-          const handleCreateExam = (e) => {
+          const handleSaveExam = (e) => {
             e.preventDefault();
             if (newExamForm.selectedQuestionIds.length === 0) {
               showToast("Select at least one question for the exam template.", "error");
               return;
             }
-            const accessCode = `YASSIR-${Math.floor(1000 + Math.random() * 9000)}`;
-            const created = {
-              id: `exam-${Date.now()}`,
-              title: newExamForm.title,
-              timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
-              passScore: parseInt(newExamForm.passScore || 70),
-              questionIds: newExamForm.selectedQuestionIds,
-              accessCode: accessCode,
-              createdAt: new Date().toISOString()
-            };
-            setExams(prev => [created, ...prev]);
-            showToast(`Exam Template '${created.title}' created! Code: ${accessCode}`);
+
+            if (editingExamId) {
+              setExams(prev => prev.map(ex => ex.id === editingExamId ? {
+                ...ex,
+                title: newExamForm.title,
+                timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
+                passScore: parseInt(newExamForm.passScore || 70),
+                questionIds: newExamForm.selectedQuestionIds
+              } : ex));
+              showToast(`Exam Template '${newExamForm.title}' updated successfully!`);
+              setEditingExamId(null);
+            } else {
+              const accessCode = `YASSIR-${Math.floor(1000 + Math.random() * 9000)}`;
+              const created = {
+                id: `exam-${Date.now()}`,
+                title: newExamForm.title,
+                timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
+                passScore: parseInt(newExamForm.passScore || 70),
+                questionIds: newExamForm.selectedQuestionIds,
+                accessCode: accessCode,
+                createdAt: new Date().toISOString()
+              };
+              setExams(prev => [created, ...prev]);
+              showToast(`Exam Template '${created.title}' created! Code: ${accessCode}`);
+            }
+
+            setNewExamForm({
+              title: 'Senior Data Analytics SQL Challenge',
+              timeLimitMinutes: 20,
+              passScore: 70,
+              selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
+            });
+          };
+
+          const handleEditExamClick = (ex) => {
+            setEditingExamId(ex.id);
+            setNewExamForm({
+              title: ex.title,
+              timeLimitMinutes: ex.timeLimitMinutes,
+              passScore: ex.passScore || 70,
+              selectedQuestionIds: ex.questionIds
+            });
+            showToast(`Editing exam '${ex.title}'`);
+          };
+
+          const handleDeleteExam = (examId) => {
+            if (exams.length <= 1) {
+              showToast("At least one exam template must remain active.", "error");
+              return;
+            }
+            setExams(prev => prev.filter(ex => ex.id !== examId));
+            showToast("Exam template deleted.", "error");
           };
 
           const handleSaveQuestion = (e) => {
@@ -521,19 +612,19 @@
               <header className="h-16 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
                 <div className="flex items-center space-x-3">
                   <div className="bg-sky-500 text-slate-950 font-black tracking-widest text-lg px-2.5 py-0.5 rounded shadow-lg shadow-sky-500/20">
-                    YASSIR
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-white text-sm font-bold tracking-tight">Technical Examination System</span>
-                    <span className="text-[11px] text-slate-400">Data Engineering & Analytics Interview Suite</span>
-                  </div>
-                </div>
-
-                {/* Candidate Active Timer */}
+                {/* Candidate Active Timer & Anti-Cheat Counter */}
                 {route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= activeQuestions.length && (
-                  <div className="flex items-center space-x-2 bg-slate-800/90 px-3 py-1.5 rounded-full border border-slate-700 text-sky-400 font-mono text-xs font-semibold">
-                    <i className="fa-regular fa-clock text-sky-400"></i>
-                    <span>{formatTime(elapsedSeconds)} / {activeExam?.timeLimitMinutes || 20}:00</span>
+                  <div className="flex items-center space-x-3">
+                    {tabSwitchCount > 0 && (
+                      <div className="flex items-center space-x-1.5 bg-red-950/80 px-3 py-1.5 rounded-full border border-red-800 text-red-400 font-mono text-xs font-semibold animate-pulse">
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                        <span>Tab Switches: {tabSwitchCount}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-2 bg-slate-800/90 px-3 py-1.5 rounded-full border border-slate-700 text-sky-400 font-mono text-xs font-semibold">
+                      <i className="fa-regular fa-clock text-sky-400"></i>
+                      <span>{formatTime(elapsedSeconds)} / {activeExam?.timeLimitMinutes || 20}:00</span>
+                    </div>
                   </div>
                 )}
 
@@ -723,7 +814,7 @@
 
                 {/* VIEW 2: CANDIDATE LANDSCAPE EXAM PLAYER */}
                 {route === 'candidate_exam' && (
-                  <div className="w-full max-w-6xl flex flex-col space-y-4">
+                  <div className="w-full max-w-6xl flex flex-col space-y-4 select-none">
                     
                     {candidateSlide >= 1 && candidateSlide <= activeQuestions.length && (
                       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col justify-between min-h-[500px]">
@@ -1075,15 +1166,33 @@
                     
                     {/* LEFT PANEL: EXAM BUILDER FORM */}
                     <div className="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                      <div className="border-b border-slate-800 pb-3">
-                        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                          <i className="fa-solid fa-square-plus text-amber-400"></i>
-                          <span>Build Exam Template</span>
-                        </h3>
-                        <p className="text-xs text-slate-400">Select questions and generate direct assessment links for candidates.</p>
+                      <div className="border-b border-slate-800 pb-3 flex justify-between items-center">
+                        <div>
+                          <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                            <i className="fa-solid fa-square-plus text-amber-400"></i>
+                            <span>{editingExamId ? 'Edit Exam Template' : 'Build Exam Template'}</span>
+                          </h3>
+                          <p className="text-xs text-slate-400">Select questions and generate assessment parameters.</p>
+                        </div>
+                        {editingExamId && (
+                          <button
+                            onClick={() => {
+                              setEditingExamId(null);
+                              setNewExamForm({
+                                title: 'Senior Data Analytics SQL Challenge',
+                                timeLimitMinutes: 20,
+                                passScore: 70,
+                                selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
+                              });
+                            }}
+                            className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded"
+                          >
+                            Cancel Edit
+                          </button>
+                        )}
                       </div>
 
-                      <form onSubmit={handleCreateExam} className="space-y-3 text-xs">
+                      <form onSubmit={handleSaveExam} className="space-y-3 text-xs">
                         <div>
                           <label className="block font-semibold text-slate-300 mb-1">Exam Template Title</label>
                           <input
@@ -1149,22 +1258,22 @@
                           type="submit"
                           className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center space-x-1"
                         >
-                          <i className="fa-solid fa-link"></i>
-                          <span>Generate Exam Template & Link</span>
+                          <i className={`fa-solid ${editingExamId ? 'fa-pen-to-square' : 'fa-link'}`}></i>
+                          <span>{editingExamId ? 'Save Exam Changes' : 'Generate Exam Template & Link'}</span>
                         </button>
                       </form>
                     </div>
 
-                    {/* RIGHT PANEL: CREATED EXAM TEMPLATES LIST */}
+                    {/* RIGHT PANEL: CREATED EXAM TEMPLATES LIST WITH INCLUDED QUESTIONS INSPECTION */}
                     <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
                       <div className="border-b border-slate-800 pb-3">
                         <h3 className="text-sm font-bold text-white flex items-center space-x-2">
                           <i className="fa-solid fa-link text-sky-400"></i>
-                          <span>Active Exam Papers & Direct Share Links</span>
+                          <span>Active Exam Papers & Question Breakdown</span>
                         </h3>
                       </div>
 
-                      <div className="space-y-3 overflow-y-auto max-h-[65vh]">
+                      <div className="space-y-4 overflow-y-auto max-h-[65vh]">
                         {exams.map(ex => (
                           <div key={ex.id} className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-3">
                             <div className="flex justify-between items-start">
@@ -1172,9 +1281,50 @@
                                 <h4 className="font-bold text-white text-sm">{ex.title}</h4>
                                 <p className="text-[11px] text-slate-400">{ex.questionIds.length} Questions • {ex.timeLimitMinutes} Mins Limit • Pass Mark {ex.passScore || 70}%</p>
                               </div>
-                              <span className="bg-amber-950 text-amber-400 border border-amber-800 px-3 py-1 rounded font-mono font-bold text-xs">
-                                {ex.accessCode}
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleEditExamClick(ex)}
+                                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-semibold text-[11px]"
+                                >
+                                  Edit Exam
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteExam(ex.id)}
+                                  className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded font-semibold text-[11px]"
+                                >
+                                  Delete
+                                </button>
+                                <span className="bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-1 rounded font-mono font-bold text-xs">
+                                  {ex.accessCode}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Question List Preview inside Exam Card */}
+                            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 space-y-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-sky-400 block">
+                                Included Questions ({ex.questionIds.length}):
                               </span>
+                              <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                                {ex.questionIds.map((qid, idx) => {
+                                  const qObj = questionBank.find(q => q.id === qid);
+                                  return (
+                                    <div key={qid} className="flex justify-between items-center text-[11px] bg-slate-950 p-1.5 rounded border border-slate-800/50">
+                                      <span className="truncate max-w-[320px] text-slate-300">
+                                        #{idx + 1}. {qObj ? qObj.title : qid}
+                                      </span>
+                                      {qObj && (
+                                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                                          qObj.difficulty === 'Easy' ? 'text-emerald-400' :
+                                          qObj.difficulty === 'Medium' ? 'text-amber-400' : 'text-red-400'
+                                        }`}>
+                                          {qObj.difficulty} • {qObj.type.toUpperCase()}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
 
                             <div className="flex justify-between items-center pt-2 border-t border-slate-800">
@@ -1228,6 +1378,7 @@
                               <th className="p-3">Exam Paper</th>
                               <th className="p-3">MCQ Score</th>
                               <th className="p-3">Duration</th>
+                              <th className="p-3">Tab Switches</th>
                               <th className="p-3">Submitted At</th>
                               <th className="p-3">Action</th>
                             </tr>
@@ -1246,6 +1397,13 @@
                                   </span>
                                 </td>
                                 <td className="p-3 font-mono text-slate-400">{formatTime(sub.timeTakenSeconds || 0)}</td>
+                                <td className="p-3 font-mono">
+                                  <span className={`px-2 py-0.5 rounded font-bold ${
+                                    sub.tabSwitches > 0 ? 'bg-red-950 text-red-400 border border-red-800' : 'text-slate-500'
+                                  }`}>
+                                    {sub.tabSwitches || 0}
+                                  </span>
+                                </td>
                                 <td className="p-3 text-slate-500 text-[11px]">{sub.submittedAt}</td>
                                 <td className="p-3">
                                   <button
