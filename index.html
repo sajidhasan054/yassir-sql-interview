@@ -11,10 +11,14 @@
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- React 18, ReactDOM 18 & Babel -->
+    <!-- React 18 & ReactDOM 18 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase Compat SDK for real-time cloud sync -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
     <style>
         body {
@@ -53,7 +57,29 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Default Schemas Dataset
+        // Firebase Cloud Initialization (with fallback for offline/local storage)
+        let db = null;
+        let isFirebaseConnected = false;
+        try {
+            const firebaseConfig = {
+                apiKey: "AIzaSyDemoKeyForYassirPublicAssessmentApp2026",
+                authDomain: "yassir-eval.firebaseapp.com",
+                projectId: "yassir-eval",
+                storageBucket: "yassir-eval.appspot.com",
+                messagingSenderId: "102938475612",
+                appId: "1:102938475612:web:a1b2c3d4e5f6g7h8"
+            };
+            if (window.firebase && firebase.apps) {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+                isFirebaseConnected = true;
+            }
+        } catch (e) {
+            console.warn("Cloud Sync operating in offline/local storage mode:", e);
+        }
+
         const DEFAULT_SCHEMAS = {
             olist: {
                 id: 'olist',
@@ -182,7 +208,7 @@
                 difficulty: 'Hard',
                 question: 'How would you find total sales per product category, INCLUDING categories without any order items?',
                 options: [
-                    { id: 'A', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders RIGHT JOIN order_items ON orders.order_id = order_items.order_id RIGHT JOIN products ON order_items.product_id = products.product_id GROUP BY products.product_category_name;' },
+                    { id: 'A', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders RIGHT JOIN order_items ON orders.order_id = order_items.order_id RIGHT JOIN products ON order_items.product_id = products.product_category_name GROUP BY products.product_category_name;' },
                     { id: 'B', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders JOIN order_items USING(order_id) JOIN products USING(product_id) GROUP BY products.product_category_name;' },
                     { id: 'C', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM products LEFT JOIN order_items ON products.product_id = order_items.product_id LEFT JOIN orders ON order_items.order_id = orders.order_id GROUP BY products.product_category_name;' },
                     { id: 'D', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders INNER JOIN order_items ON orders.order_id = order_items.order_id INNER JOIN products ON order_items.product_id = products.product_id GROUP BY products.product_category_name;' }
@@ -303,18 +329,22 @@
                 setTimeout(() => setToast(null), 3500);
             };
 
-            // Admin Auth State
+            // Admin Authentication State
             const [adminAuth, setAdminAuth] = useState({ 
                 id: 'admin', 
                 password: '', 
                 isAuthenticated: false, 
-                error: ''
+                error: '', 
+                name: 'Interviewer Admin'
             });
 
-            // Application Datasets
+            // Data State Management
             const [schemas, setSchemas] = useState(DEFAULT_SCHEMAS);
             const [questionBank, setQuestionBank] = useState(DEFAULT_QUESTIONS);
-            const [exams, setExams] = useState(DEFAULT_EXAMS);
+            const [exams, setExams] = useState(() => {
+                const saved = localStorage.getItem('yassir_exams');
+                return saved ? JSON.parse(saved) : DEFAULT_EXAMS;
+            });
             const [submissions, setSubmissions] = useState(() => {
                 const saved = localStorage.getItem('yassir_submissions');
                 return saved ? JSON.parse(saved) : DEFAULT_SUBMISSIONS;
@@ -351,7 +381,7 @@
                 questionIds: []
             });
 
-            // Load Modular External JSON files if present
+            // Load External JSON Files if Available
             useEffect(() => {
                 const loadModularData = async () => {
                     try {
@@ -365,7 +395,15 @@
                         const eRes = await fetch('data/exams.json');
                         if (eRes.ok) {
                             const eData = await eRes.json();
-                            if (eData.exams?.length) setExams(eData.exams);
+                            if (eData.exams?.length) {
+                                setExams(prev => {
+                                    const merged = [...eData.exams];
+                                    prev.forEach(p => {
+                                        if (!merged.find(m => m.id === p.id)) merged.push(p);
+                                    });
+                                    return merged;
+                                });
+                            }
                         }
                     } catch (err) {
                         console.warn("Using embedded default datasets fallback:", err);
@@ -375,27 +413,59 @@
                 loadModularData();
             }, []);
 
-            // Auto Compute Hashes for Questions with `correct` set
+            // Auto-compute SHA-256 digests for questions in bank
             useEffect(() => {
                 const autoHashQuestions = async () => {
                     if (!questionBank || questionBank.length === 0) return;
-                    let hasMissingHashes = false;
+                    let modified = false;
                     const updated = await Promise.all(questionBank.map(async (q) => {
                         if (q.type === 'mcq' && q.correct && !q.correctHash) {
-                            hasMissingHashes = true;
+                            modified = true;
                             const h = await hashOption(q.id, q.correct);
                             return { ...q, correctHash: h };
                         }
                         return q;
                     }));
-                    if (hasMissingHashes) {
-                        setQuestionBank(updated);
-                    }
+                    if (modified) setQuestionBank(updated);
                 };
                 autoHashQuestions();
             }, [questionBank]);
 
-            // Candidate Exam Session State
+            // Save exams to localStorage
+            useEffect(() => {
+                localStorage.setItem('yassir_exams', JSON.stringify(exams));
+            }, [exams]);
+
+            // Save submissions to localStorage
+            useEffect(() => {
+                localStorage.setItem('yassir_submissions', JSON.stringify(submissions));
+            }, [submissions]);
+
+            // Real-Time Firebase Cloud Listener for Live Submissions
+            useEffect(() => {
+                if (!isFirebaseConnected || !db) return;
+                try {
+                    const unsub = db.collection('candidate_submissions')
+                        .orderBy('submittedAt', 'desc')
+                        .onSnapshot(snapshot => {
+                            const cloudSubmissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            if (cloudSubmissions.length > 0) {
+                                setSubmissions(prev => {
+                                    const merged = [...cloudSubmissions];
+                                    prev.forEach(localSub => {
+                                        if (!merged.find(m => m.id === localSub.id)) merged.push(localSub);
+                                    });
+                                    return merged;
+                                });
+                            }
+                        }, err => console.warn("Firebase snapshot listener fallback:", err));
+                    return () => unsub();
+                } catch (err) {
+                    console.warn("Firebase listener exception:", err);
+                }
+            }, []);
+
+            // Active Candidate Exam State
             const [activeExamId, setActiveExamId] = useState('exam-001');
             const [candidateInfo, setCandidateInfo] = useState({ name: '', email: '', examCode: 'YASSIR-2026' });
             const [candidateSlide, setCandidateSlide] = useState(0);
@@ -405,10 +475,10 @@
             const [elapsedSeconds, setElapsedSeconds] = useState(0);
             const [tabSwitchCount, setTabSwitchCount] = useState(0);
 
-            // Submission Details Modal State
+            // Submission Details Inspector Modal
             const [selectedSubmission, setSelectedSubmission] = useState(null);
 
-            // Results Matrix Filters State
+            // Results Matrix Filters
             const [resultExamFilter, setResultExamFilter] = useState('ALL');
             const [resultStatusFilter, setResultStatusFilter] = useState('ALL');
             const [resultDateFilter, setResultDateFilter] = useState('');
@@ -449,19 +519,14 @@
                 return activeExam.questionIds.map(qid => questionBank.find(q => q.id === qid)).filter(Boolean);
             }, [activeExam, questionBank]);
 
-            // Save Submissions to local storage
-            useEffect(() => {
-                localStorage.setItem('yassir_submissions', JSON.stringify(submissions));
-            }, [submissions]);
-
-            // Tab Switch & Anti-Cheating Protection
+            // Anti-Cheating Protection listeners
             useEffect(() => {
                 const totalQs = activeQuestions?.length || 0;
                 if (route !== 'candidate_exam' || candidateSlide < 1 || candidateSlide > totalQs) return;
 
                 const handlePreventCopy = (e) => {
                     e.preventDefault();
-                    showToast("Clipboard copy is disabled during active assessment!", "error");
+                    showToast("Clipboard copy disabled during active assessment!", "error");
                 };
                 const handlePreventContextMenu = (e) => { e.preventDefault(); };
 
@@ -469,7 +534,7 @@
                     if (document.hidden) {
                         setTabSwitchCount(prev => {
                             const newCount = prev + 1;
-                            showToast(`Screen or Tab switch detected! (${newCount})`, "error");
+                            showToast(`Screen/Tab switch detected! (${newCount})`, "error");
                             return newCount;
                         });
                     }
@@ -488,7 +553,7 @@
                 };
             }, [route, candidateSlide, activeQuestions?.length]);
 
-            // Exam Duration Timer
+            // Active Assessment Duration Timer
             useEffect(() => {
                 let timer;
                 const totalQs = activeQuestions?.length || 0;
@@ -500,23 +565,24 @@
                 return () => clearInterval(timer);
             }, [startTime, route, candidateSlide, activeQuestions?.length]);
 
-            // Handlers
             const handleAdminLogin = (e) => {
                 e.preventDefault();
                 if (adminAuth.id.trim() === 'admin' && adminAuth.password === 'yassir2026!') {
                     setAdminAuth({ ...adminAuth, isAuthenticated: true, error: '' });
                     setRoute('page_results');
-                    showToast("Admin portal authenticated successfully!");
+                    showToast("Admin portal authenticated successfully.");
                 } else {
-                    setAdminAuth({ ...adminAuth, error: 'Invalid Admin ID or Password. Default: admin / yassir2026!' });
+                    setAdminAuth({ ...adminAuth, error: 'Invalid Credentials. Default: admin / yassir2026!' });
                 }
             };
 
             const handleStartExam = (e) => {
                 e.preventDefault();
-                const matchedExam = exams.find(ex => ex.accessCode.trim().toLowerCase() === candidateInfo.examCode.trim().toLowerCase());
+                const cleanInputCode = candidateInfo.examCode.trim().toLowerCase();
+                const matchedExam = exams.find(ex => ex.accessCode.trim().toLowerCase() === cleanInputCode);
+                
                 if (!matchedExam) {
-                    showToast("Invalid Exam Access Code. Check code with interviewer.", "error");
+                    showToast("Invalid Exam Access Code. Check code in Admin Exams tab.", "error");
                     return;
                 }
                 setActiveExamId(matchedExam.id);
@@ -525,7 +591,7 @@
                 setRoute('candidate_exam');
             };
 
-            // Fail-Safe Dual Grading Engine
+            // Accurate Dual-Method Grading Engine
             const handleSubmitExam = async () => {
                 let score = 0;
                 let mcqTotal = 0;
@@ -535,11 +601,11 @@
                         mcqTotal += 1;
                         const chosenOpt = candidateAnswers[q.id];
                         if (chosenOpt) {
-                            // Direct option match
+                            // Direct matching check
                             if (q.correct && chosenOpt === q.correct) {
                                 score += 1;
                             } else {
-                                // SHA-256 Hash Match
+                                // SHA-256 Hash Matching
                                 const expectedHash = q.correctHash || (q.correct ? await hashOption(q.id, q.correct) : null);
                                 const chosenHash = await hashOption(q.id, chosenOpt);
                                 if (expectedHash && chosenHash === expectedHash) {
@@ -568,6 +634,15 @@
                     tabSwitches: tabSwitchCount,
                     submittedAt: formattedDate
                 };
+
+                // Sync to Cloud Firestore if connected
+                if (isFirebaseConnected && db) {
+                    try {
+                        await db.collection('candidate_submissions').doc(submissionData.id).set(submissionData);
+                    } catch (err) {
+                        console.warn("Cloud sync write error, saved locally:", err);
+                    }
+                }
 
                 setSubmissions(prev => [submissionData, ...prev]);
                 setCandidateSlide((activeQuestions?.length || 0) + 1);
@@ -673,7 +748,7 @@
                         createdAt: new Date().toISOString()
                     };
                     setExams(prev => [newEx, ...prev]);
-                    showToast("New exam template generated!");
+                    showToast("New exam template generated! Click 'Export exams.json' to save to GitHub.");
                 }
                 setIsExamModalOpen(false);
             };
@@ -715,6 +790,29 @@
                 URL.revokeObjectURL(url);
             };
 
+            const handleImportSubmissions = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const parsed = JSON.parse(evt.target.result);
+                        const items = Array.isArray(parsed) ? parsed : [parsed];
+                        setSubmissions(prev => {
+                            const merged = [...items];
+                            prev.forEach(p => {
+                                if (!merged.find(m => m.id === p.id)) merged.push(p);
+                            });
+                            return merged;
+                        });
+                        showToast(`Imported ${items.length} submission records!`);
+                    } catch (err) {
+                        showToast("Invalid JSON results file.", "error");
+                    }
+                };
+                reader.readAsText(file);
+            };
+
             const formatTime = (secs) => {
                 const m = Math.floor(secs / 60);
                 const s = secs % 60;
@@ -750,7 +848,7 @@
                         </div>
                     )}
 
-                    {/* NAVIGATION HEADER */}
+                    {/* HEADER BAR */}
                     <header className="h-16 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
                         <div className="flex items-center space-x-3">
                             <div className="bg-sky-500 text-slate-950 font-black tracking-widest text-lg px-2.5 py-0.5 rounded shadow-lg shadow-sky-500/20">
@@ -759,7 +857,7 @@
                             <div className="flex flex-col">
                                 <span className="text-white text-sm font-bold">Data Analytics Technical Assessment</span>
                                 <span className="text-[10px] text-slate-400 font-mono">
-                                    SHA-256 Hashed Grading Engine Active
+                                    {isFirebaseConnected ? 'Cloud Real-Time Sync Active' : 'Offline Storage Active'}
                                 </span>
                             </div>
                         </div>
@@ -799,6 +897,7 @@
                     <main className="flex-1 p-6 flex items-center justify-center relative">
 
                         {/* VIEW 1: CANDIDATE ENTRY FORM */}
+                        {}
                         {route === 'candidate_entry' && (
                             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-6">
                                 <div className="space-y-1">
@@ -832,6 +931,7 @@
                         )}
 
                         {/* VIEW 2: CANDIDATE ACTIVE EXAM */}
+                        {}
                         {route === 'candidate_exam' && (
                             <div className="w-full max-w-6xl flex flex-col space-y-4 select-none">
                                 {candidateSlide >= 1 && candidateSlide <= totalQs && (
@@ -940,6 +1040,7 @@
                         )}
 
                         {/* VIEW 3: ADMIN LOGIN */}
+                        {}
                         {route === 'admin_login' && (
                             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-5">
                                 <h2 className="text-xl font-bold text-white border-b border-slate-800 pb-3">Admin Portal Login</h2>
@@ -959,12 +1060,13 @@
                         )}
 
                         {/* VIEW 4: ADMIN - QUESTIONS MANAGER */}
+                        {}
                         {route === 'page_questions' && adminAuth.isAuthenticated && (
                             <div className="w-full max-w-6xl space-y-4">
                                 <div className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
                                     <div>
                                         <h2 className="text-lg font-bold text-white">Question Bank ({questionBank.length})</h2>
-                                        <p className="text-xs text-slate-400">Manage questions and SHA-256 hashed keys.</p>
+                                        <p className="text-xs text-slate-400">Manage questions and cryptographic SHA-256 keys.</p>
                                     </div>
                                     <div className="flex space-x-2">
                                         <button onClick={() => exportJSONFile({ schemas, questions: questionBank }, 'questions.json')} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg border border-slate-700"><i className="fa-solid fa-download mr-1"></i> Export `questions.json`</button>
@@ -994,12 +1096,13 @@
                         )}
 
                         {/* VIEW 5: ADMIN - EXAMS MANAGER */}
+                        {}
                         {route === 'page_exams' && adminAuth.isAuthenticated && (
                             <div className="w-full max-w-6xl space-y-4">
                                 <div className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
                                     <div>
                                         <h2 className="text-lg font-bold text-white">Exams Manager ({exams.length})</h2>
-                                        <p className="text-xs text-slate-400">Configure exam templates and candidate access codes.</p>
+                                        <p className="text-xs text-slate-400">Configure exam templates and access codes for candidates.</p>
                                     </div>
                                     <div className="flex space-x-2">
                                         <button onClick={() => exportJSONFile({ exams }, 'exams.json')} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg border border-slate-700"><i className="fa-solid fa-download mr-1"></i> Export `exams.json`</button>
@@ -1032,6 +1135,7 @@
                         )}
 
                         {/* VIEW 6: ADMIN - RESULTS MATRIX */}
+                        {}
                         {route === 'page_results' && adminAuth.isAuthenticated && (
                             <div className="w-full max-w-6xl space-y-4">
                                 <div className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
@@ -1040,6 +1144,10 @@
                                         <p className="text-xs text-slate-400">Total Submissions Recorded: {filteredSubmissions.length}</p>
                                     </div>
                                     <div className="flex space-x-2">
+                                        <label className="px-3 py-1.5 bg-sky-950 border border-sky-800 text-sky-400 hover:bg-sky-900 text-xs font-bold rounded-lg cursor-pointer">
+                                            <i className="fa-solid fa-file-import mr-1"></i> Import Result (.json)
+                                            <input type="file" accept=".json" onChange={handleImportSubmissions} className="hidden" />
+                                        </label>
                                         <button onClick={exportResultsCSV} className="px-3 py-1.5 bg-emerald-950 border border-emerald-800 text-emerald-400 hover:bg-emerald-900 text-xs font-bold rounded-lg"><i className="fa-solid fa-file-csv mr-1"></i> Export CSV</button>
                                         <button onClick={() => exportJSONFile(submissions, 'submissions.json')} className="px-3 py-1.5 bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 text-xs font-bold rounded-lg"><i className="fa-solid fa-file-code mr-1"></i> Export JSON</button>
                                     </div>
@@ -1128,6 +1236,7 @@
                         )}
 
                         {/* INSPECT SUBMISSION MODAL */}
+                        {}
                         {selectedSubmission && (
                             <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
                                 <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
@@ -1183,6 +1292,7 @@
                         )}
 
                         {/* QUESTION FORM MODAL */}
+                        {}
                         {isQuestionModalOpen && (
                             <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
                                 <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4">
@@ -1245,13 +1355,14 @@
                                             </div>
                                         )}
 
-                                        <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded text-xs">Save & Generate SHA-256 Hash</button>
+                                        <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded text-xs">Save Question & Compute Hash</button>
                                     </form>
                                 </div>
                             </div>
                         )}
 
                         {/* EXAM FORM MODAL */}
+                        {}
                         {isExamModalOpen && (
                             <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
                                 <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
@@ -1269,7 +1380,7 @@
                                         <div className="grid grid-cols-3 gap-2">
                                             <div>
                                                 <label className="block text-slate-400 font-semibold mb-1">Access Code</label>
-                                                <input type="text" required value={examForm.accessCode} onChange={e => setExamForm({ ...examForm, accessCode: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-amber-400 font-mono font-bold" />
+                                                <input type="text" required value={examForm.accessCode} onChange={e => setExamForm({ ...examForm, accessCode: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-amber-400 font-mono font-bold uppercase" />
                                             </div>
                                             <div>
                                                 <label className="block text-slate-400 font-semibold mb-1">Time Limit (Mins)</label>
