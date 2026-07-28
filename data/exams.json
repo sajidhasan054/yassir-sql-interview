@@ -1,0 +1,22 @@
+{
+"exams": [
+{
+"id": "exam-001",
+"title": "Yassir Product Data Analyst Technical Screen",
+"passScore": 70,
+"timeLimitMinutes": 20,
+"questionIds": ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"],
+"accessCode": "YASSIR-2026",
+"createdAt": "2026-01-01T00:00:00.000Z"
+},
+{
+"id": "exam-002",
+"title": "Data Engineering & Window Functions Screen",
+"passScore": 80,
+"timeLimitMinutes": 25,
+"questionIds": ["q2", "q3", "q6", "q7", "q9", "q10"],
+"accessCode": "DE-SQL-88",
+"createdAt": "2026-01-01T00:00:00.000Z"
+}
+]
+}
