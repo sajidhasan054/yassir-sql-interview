@@ -6,18 +6,20 @@
     <title>Yassir Technical Interview & Assessment Platform</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM Standalone -->
+    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel Compiler for JSX -->
+    <!-- Babel standalone for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
         .font-mono { font-family: 'Fira Code', monospace; }
         
-        /* Custom scrollbar */
+        /* Custom scrollbar styling */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #090d16; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
@@ -28,7 +30,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useCallback } = React;
 
         // 1. DATABASE SCHEMAS DEFINITION
         const SCHEMAS = {
@@ -71,7 +73,6 @@
           }
         };
 
-        // 2. 20 PRE-LOADED SQL & ANALYTICS TECHNICAL QUESTIONS
         const INITIAL_QUESTION_BANK = [
           {
             id: 'q1',
@@ -225,19 +226,1187 @@
             ],
             correct: 'B',
             explanation: 'NTILE(10) splits rows into 10 equal buckets per city, where bucket 1 represents the top 10% percentile.'
-          },
-          {
-            id: 'q11',
-            schemaId: 'olist',
-            title: 'Finding Duplicate Orders',
-            type: 'mcq',
-            difficulty: 'Easy',
-            question: 'How do you check if there are duplicate order_ids in the order_items table?',
-            options: [
-              { id: 'A', text: 'SELECT order_id, COUNT(*) FROM order_items GROUP BY order_id HAVING COUNT(*) > 1;' },
-              { id: 'B', text: 'SELECT order_id FROM order_items WHERE COUNT(order_id) > 1;' },
-              { id: 'C', text: 'SELECT DISTINCT order_id FROM order_items WHERE order_id IS DUPLICATE;' },
-              { id: 'D', text: 'SELECT order_id, SUM(order_item_id) FROM order_items GROUP BY order_id;' }
-            ],
-            correct: 'A',
-            explanation: 'GROUP BY order_id paired with HAVING COUNT(*) >
+          }
+        ];
+
+        function App() {
+          // Routes: 'candidate_entry', 'candidate_exam', 'admin_login', 'page_questions', 'page_exams', 'page_results', 'page_settings'
+          const [route, setRoute] = useState('candidate_entry');
+          
+          // Toast Notification Banner
+          const [toast, setToast] = useState(null);
+          const showToast = (msg, type = 'success') => {
+            setToast({ msg, type });
+            setTimeout(() => setToast(null), 3500);
+          };
+
+          // Admin Authentication
+          const [adminAuth, setAdminAuth] = useState({ id: 'admin', password: '', isAuthenticated: true, error: '', name: 'Interviewer Admin', role: 'Lead Data Analytics Evaluator' });
+
+          // Repositories in LocalStorage
+          const [questionBank, setQuestionBank] = useState(() => {
+            const saved = localStorage.getItem('yassir_qbank');
+            return saved ? JSON.parse(saved) : INITIAL_QUESTION_BANK;
+          });
+
+          const [exams, setExams] = useState(() => {
+            const saved = localStorage.getItem('yassir_exams');
+            return saved ? JSON.parse(saved) : [
+              {
+                id: 'exam-001',
+                title: 'Yassir Product Data Analyst Technical Screen',
+                passScore: 70,
+                timeLimitMinutes: 20,
+                questionIds: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'],
+                accessCode: 'YASSIR-2026',
+                createdAt: new Date().toISOString()
+              },
+              {
+                id: 'exam-002',
+                title: 'Data Engineering & Window Functions Screen',
+                passScore: 80,
+                timeLimitMinutes: 25,
+                questionIds: ['q2', 'q3', 'q6', 'q7', 'q9', 'q10'],
+                accessCode: 'DE-SQL-88',
+                createdAt: new Date().toISOString()
+              }
+            ];
+          });
+
+          const [submissions, setSubmissions] = useState(() => {
+            const saved = localStorage.getItem('yassir_submissions');
+            return saved ? JSON.parse(saved) : [];
+          });
+
+          // Active Candidate Exam Session State
+          const [activeExamId, setActiveExamId] = useState('exam-001');
+          const [candidateInfo, setCandidateInfo] = useState({ name: '', email: '', examCode: 'YASSIR-2026' });
+          const [candidateSlide, setCandidateSlide] = useState(0); // 0 = entry, 1..N = Qs, N+1 = submitted
+          const [candidateAnswers, setCandidateAnswers] = useState({});
+          const [candidateTextAnswers, setCandidateTextAnswers] = useState({});
+          const [startTime, setStartTime] = useState(null);
+          const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+          // Inspection Modal State
+          const [selectedSubmission, setSelectedSubmission] = useState(null);
+
+          // Admin Add/Edit Question Modal State
+          const [editingQuestion, setEditingQuestion] = useState(null); // null = off, {} = question object
+          const [newQuestionForm, setNewQuestionForm] = useState({
+            title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
+            options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
+            correct: 'A', explanation: ''
+          });
+
+          // Admin Create Exam Form State
+          const [newExamForm, setNewExamForm] = useState({
+            title: 'Senior Data Analytics SQL Challenge',
+            timeLimitMinutes: 20,
+            passScore: 70,
+            selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
+          });
+
+          // Sync storage
+          useEffect(() => { localStorage.setItem('yassir_qbank', JSON.stringify(questionBank)); }, [questionBank]);
+          useEffect(() => { localStorage.setItem('yassir_exams', JSON.stringify(exams)); }, [exams]);
+          useEffect(() => { localStorage.setItem('yassir_submissions', JSON.stringify(submissions)); }, [submissions]);
+
+          // Handle Hash Link Navigation (e.g. #exam=YASSIR-2026 or #questions)
+          useEffect(() => {
+            const parseHash = () => {
+              const hash = window.location.hash.replace('#', '');
+              if (hash.startsWith('exam=')) {
+                const code = hash.split('=')[1];
+                const foundExam = exams.find(e => e.accessCode.toLowerCase() === code.toLowerCase());
+                if (foundExam) {
+                  setActiveExamId(foundExam.id);
+                  setCandidateInfo(prev => ({ ...prev, examCode: foundExam.accessCode }));
+                  setRoute('candidate_entry');
+                }
+              } else if (hash === 'questions') {
+                setRoute('page_questions');
+              } else if (hash === 'exams') {
+                setRoute('page_exams');
+              } else if (hash === 'results') {
+                setRoute('page_results');
+              } else if (hash === 'settings') {
+                setRoute('page_settings');
+              } else if (hash === 'candidate') {
+                setRoute('candidate_entry');
+              }
+            };
+
+            parseHash();
+            window.addEventListener('hashchange', parseHash);
+            return () => window.removeEventListener('hashchange', parseHash);
+          }, [exams]);
+
+          // Active exam details
+          const activeExam = exams.find(e => e.id === activeExamId) || exams[0];
+          const activeQuestions = useMemo(() => {
+            if (!activeExam) return [];
+            return activeExam.questionIds.map(qid => questionBank.find(q => q.id === qid)).filter(Boolean);
+          }, [activeExam, questionBank]);
+
+          // Timer
+          useEffect(() => {
+            let timer;
+            if (startTime && route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= activeQuestions.length) {
+              timer = setInterval(() => {
+                setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+              }, 1000);
+            }
+            return () => clearInterval(timer);
+          }, [startTime, route, candidateSlide, activeQuestions.length]);
+
+          const handleAdminLogin = (e) => {
+            e.preventDefault();
+            if (adminAuth.id.trim() === 'admin' && adminAuth.password === 'yassir2026!') {
+              setAdminAuth({ ...adminAuth, isAuthenticated: true, error: '' });
+              setRoute('page_results');
+              window.location.hash = 'results';
+              showToast("Admin session unlocked successfully!");
+            } else {
+              setAdminAuth({ ...adminAuth, error: 'Invalid ID or Password. Default: admin / yassir2026!' });
+            }
+          };
+
+          const handleStartExam = (e) => {
+            e.preventDefault();
+            const matchedExam = exams.find(ex => ex.accessCode.trim().toLowerCase() === candidateInfo.examCode.trim().toLowerCase());
+            if (!matchedExam) {
+              showToast("Invalid Exam Access Code. Please check with interviewer.", "error");
+              return;
+            }
+            setActiveExamId(matchedExam.id);
+            setStartTime(Date.now());
+            setCandidateSlide(1);
+            setRoute('candidate_exam');
+          };
+
+          const handleSelectOption = (questionId, optionId) => {
+            setCandidateAnswers(prev => ({ ...prev, [questionId]: optionId }));
+          };
+
+          const handleTextAnswer = (questionId, field, value) => {
+            setCandidateTextAnswers(prev => ({
+              ...prev,
+              [questionId]: { ...prev[questionId], [field]: value }
+            }));
+          };
+
+          const calculateCandidateScore = () => {
+            let score = 0;
+            let mcqTotal = 0;
+            activeQuestions.forEach(q => {
+              if (q.type === 'mcq') {
+                mcqTotal += 1;
+                if (candidateAnswers[q.id] === q.correct) score += 1;
+              }
+            });
+            return { score, mcqTotal };
+          };
+
+          const handleSubmitExam = () => {
+            const { score, mcqTotal } = calculateCandidateScore();
+            const submissionData = {
+              id: `sub-${Date.now()}`,
+              candidateName: candidateInfo.name,
+              candidateEmail: candidateInfo.email,
+              examId: activeExamId,
+              examTitle: activeExam.title,
+              mcqAnswers: candidateAnswers,
+              textAnswers: candidateTextAnswers,
+              mcqScore: score,
+              mcqTotal: mcqTotal,
+              percentage: mcqTotal > 0 ? Math.round((score / mcqTotal) * 100) : 0,
+              timeTakenSeconds: elapsedSeconds,
+              submittedAt: new Date().toLocaleString()
+            };
+
+            setSubmissions(prev => [submissionData, ...prev]);
+            setCandidateSlide(activeQuestions.length + 1);
+            showToast("Exam submitted successfully! Results saved to repository.");
+          };
+
+          const handleCreateExam = (e) => {
+            e.preventDefault();
+            if (newExamForm.selectedQuestionIds.length === 0) {
+              showToast("Select at least one question for the exam template.", "error");
+              return;
+            }
+            const accessCode = `YASSIR-${Math.floor(1000 + Math.random() * 9000)}`;
+            const created = {
+              id: `exam-${Date.now()}`,
+              title: newExamForm.title,
+              timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
+              passScore: parseInt(newExamForm.passScore || 70),
+              questionIds: newExamForm.selectedQuestionIds,
+              accessCode: accessCode,
+              createdAt: new Date().toISOString()
+            };
+            setExams(prev => [created, ...prev]);
+            showToast(`Exam Template '${created.title}' created! Code: ${accessCode}`);
+          };
+
+          const handleSaveQuestion = (e) => {
+            e.preventDefault();
+            if (editingQuestion && editingQuestion.id) {
+              // Update existing
+              setQuestionBank(prev => prev.map(q => q.id === editingQuestion.id ? { ...newQuestionForm, id: q.id } : q));
+              showToast("Question updated successfully!");
+            } else {
+              // Create new
+              const created = { ...newQuestionForm, id: `custom-q-${Date.now()}` };
+              setQuestionBank(prev => [created, ...prev]);
+              showToast("New Question added to Question Repository!");
+            }
+            setEditingQuestion(null);
+            setNewQuestionForm({
+              title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
+              options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
+              correct: 'A', explanation: ''
+            });
+          };
+
+          const handleDeleteQuestion = (qid) => {
+            setQuestionBank(prev => prev.filter(q => q.id !== qid));
+            showToast("Question deleted from Bank.", "error");
+          };
+
+          const copyExamLink = (accessCode) => {
+            const link = `${window.location.origin}${window.location.pathname}#exam=${accessCode}`;
+            navigator.clipboard.writeText(link);
+            showToast(`Direct Exam Link copied to clipboard!\n${link}`);
+          };
+
+          const formatTime = (secs) => {
+            const m = Math.floor(secs / 60);
+            const s = secs % 60;
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+          };
+
+          return (
+            <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden">
+              
+              {/* TOAST BANNER */}
+              {toast && (
+                <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-2xl font-semibold text-xs flex items-center space-x-2 border transition-all animate-bounce ${
+                  toast.type === 'error' ? 'bg-red-950 border-red-800 text-red-200' : 'bg-emerald-950 border-emerald-800 text-emerald-200'
+                }`}>
+                  <i className={`fa-solid ${toast.type === 'error' ? 'fa-circle-exclamation text-red-400' : 'fa-circle-check text-emerald-400'}`}></i>
+                  <span>{toast.msg}</span>
+                </div>
+              )}
+
+              {/* TOP APPLICATION HEADER WITH MULTI-PAGE NAVIGATION */}
+              <header className="h-16 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-sky-500 text-slate-950 font-black tracking-widest text-lg px-2.5 py-0.5 rounded shadow-lg shadow-sky-500/20">
+                    YASSIR
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-white text-sm font-bold tracking-tight">Technical Examination System</span>
+                    <span className="text-[11px] text-slate-400">Data Engineering & Analytics Interview Suite</span>
+                  </div>
+                </div>
+
+                {/* Candidate Active Timer */}
+                {route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= activeQuestions.length && (
+                  <div className="flex items-center space-x-2 bg-slate-800/90 px-3 py-1.5 rounded-full border border-slate-700 text-sky-400 font-mono text-xs font-semibold">
+                    <i className="fa-regular fa-clock text-sky-400"></i>
+                    <span>{formatTime(elapsedSeconds)} / {activeExam?.timeLimitMinutes || 20}:00</span>
+                  </div>
+                )}
+
+                {/* MULTI-PAGE SYSTEM NAVIGATION TABS */}
+                <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  
+                  {/* Candidate Entrance */}
+                  <button
+                    onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-pen-to-square"></i>
+                    <span>Candidate Screen</span>
+                  </button>
+
+                  <div className="h-4 w-px bg-slate-800 mx-1"></div>
+
+                  {/* Admin Page 1: Question Repository */}
+                  <button
+                    onClick={() => {
+                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
+                      else { setRoute('page_questions'); window.location.hash = 'questions'; }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      route === 'page_questions' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-database"></i>
+                    <span>Questions ({questionBank.length})</span>
+                  </button>
+
+                  {/* Admin Page 2: Exam Templates */}
+                  <button
+                    onClick={() => {
+                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
+                      else { setRoute('page_exams'); window.location.hash = 'exams'; }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      route === 'page_exams' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-layer-group"></i>
+                    <span>Exams & Links ({exams.length})</span>
+                  </button>
+
+                  {/* Admin Page 3: Candidate Results */}
+                  <button
+                    onClick={() => {
+                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
+                      else { setRoute('page_results'); window.location.hash = 'results'; }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      route === 'page_results' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-square-poll-vertical"></i>
+                    <span>Results ({submissions.length})</span>
+                  </button>
+
+                  {/* Admin Page 4: Admin Profile Details & Settings */}
+                  <button
+                    onClick={() => {
+                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
+                      else { setRoute('page_settings'); window.location.hash = 'settings'; }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      route === 'page_settings' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-user-shield"></i>
+                    <span>Admin Details</span>
+                  </button>
+
+                </div>
+              </header>
+
+              {/* MAIN PAGE VIEW RENDERER */}
+              <main className="flex-1 p-6 flex items-center justify-center relative">
+
+                {/* VIEW 1: CANDIDATE REGISTRATION ENTRY PAGE */}
+                {route === 'candidate_entry' && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-6">
+                    <div className="space-y-1">
+                      <div className="text-sky-400 text-xs font-mono font-bold flex items-center space-x-1.5">
+                        <i className="fa-solid fa-bolt"></i>
+                        <span>CANDIDATE EXAM PORTAL</span>
+                      </div>
+                      <h1 className="text-2xl font-bold text-white">Start Candidate Session</h1>
+                      <p className="text-xs text-slate-400">
+                        Enter your candidate profile and the access code given by your interviewer.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleStartExam} className="space-y-4 text-xs">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={candidateInfo.name}
+                          onChange={e => setCandidateInfo({ ...candidateInfo, name: e.target.value })}
+                          placeholder="e.g. Sarah Mansouri"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          required
+                          value={candidateInfo.email}
+                          onChange={e => setCandidateInfo({ ...candidateInfo, email: e.target.value })}
+                          placeholder="sarah@example.com"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Exam Access Code</label>
+                        <input
+                          type="text"
+                          required
+                          value={candidateInfo.examCode}
+                          onChange={e => setCandidateInfo({ ...candidateInfo, examCode: e.target.value })}
+                          placeholder="e.g. YASSIR-2026"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sky-400 font-mono font-bold focus:outline-none focus:border-sky-500 uppercase"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-lg transition-all flex items-center justify-center space-x-2 shadow-lg shadow-sky-500/20"
+                      >
+                        <span>Launch Assessment</span>
+                        <i className="fa-solid fa-arrow-right"></i>
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* VIEW 2: CANDIDATE LANDSCAPE EXAM PLAYER */}
+                {route === 'candidate_exam' && (
+                  <div className="w-full max-w-6xl flex flex-col space-y-4">
+                    
+                    {candidateSlide >= 1 && candidateSlide <= activeQuestions.length && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col justify-between min-h-[500px]">
+                        {(() => {
+                          const currentQ = activeQuestions[candidateSlide - 1];
+                          const schema = SCHEMAS[currentQ.schemaId] || SCHEMAS.olist;
+                          const selectedOption = candidateAnswers[currentQ.id];
+                          const textAns = candidateTextAnswers[currentQ.id] || { flawsText: '', sqlText: '' };
+
+                          return (
+                            <div className="grid grid-cols-12 gap-6 flex-1">
+                              
+                              {/* LEFT PANEL: QUESTION + PERMANENT SCHEMA DRAWER */}
+                              <div className="col-span-5 border-r border-slate-800 pr-5 flex flex-col justify-between space-y-4">
+                                <div className="space-y-3">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs font-mono font-bold text-sky-400 bg-sky-950 border border-sky-800 px-3 py-0.5 rounded-full">
+                                      Question {candidateSlide} / {activeQuestions.length}
+                                    </span>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
+                                      currentQ.difficulty === 'Easy' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                                      currentQ.difficulty === 'Medium' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+                                      'bg-red-950 text-red-400 border border-red-800'
+                                    }`}>
+                                      {currentQ.difficulty}
+                                    </span>
+                                  </div>
+
+                                  <h2 className="text-base font-bold text-slate-100 leading-snug">
+                                    {currentQ.question}
+                                  </h2>
+                                </div>
+
+                                {/* PERMANENT SCHEMA TABLE DRAWER */}
+                                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 overflow-y-auto max-h-56 text-xs font-mono">
+                                  <span className="text-amber-400 font-bold block border-b border-slate-800 pb-1 flex items-center gap-1.5">
+                                    <i className="fa-solid fa-database"></i>
+                                    <span>Schema: {schema.name}</span>
+                                  </span>
+
+                                  {schema.tables.map((t, idx) => (
+                                    <div key={idx} className="space-y-0.5">
+                                      <span className="text-sky-400 font-bold block text-[11px]">// {t.name}</span>
+                                      <div className="pl-2 text-slate-300 text-[10px]">
+                                        {t.cols.join(' • ')}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                              </div>
+
+                              {/* RIGHT PANEL: INTERACTIVE ANSWER INPUT */}
+                              <div className="col-span-7 flex flex-col justify-between pl-1">
+                                {currentQ.type === 'mcq' && (
+                                  <div className="space-y-3 my-auto">
+                                    {currentQ.options.map((opt) => {
+                                      const isSelected = selectedOption === opt.id;
+                                      return (
+                                        <div
+                                          key={opt.id}
+                                          onClick={() => handleSelectOption(currentQ.id, opt.id)}
+                                          className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                                            isSelected
+                                              ? 'bg-sky-500/10 border-sky-500 text-sky-200 ring-1 ring-sky-500'
+                                              : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-950'
+                                          }`}
+                                        >
+                                          <span className="text-xs font-mono leading-normal pr-2">{opt.text}</span>
+                                          <div className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center text-xs font-bold ${
+                                            isSelected ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-slate-700 text-slate-500'
+                                          }`}>
+                                            {opt.id}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                {currentQ.type === 'scenario' && (
+                                  <div className="space-y-3 my-auto">
+                                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] text-sky-300 max-h-36 overflow-y-auto">
+                                      <span className="text-slate-500 block text-[10px] font-sans mb-1">// Candidate Code Review Prompt:</span>
+                                      <pre>{currentQ.buggySql}</pre>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                        1. Logical Bugs / Flaws Analysis:
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        value={textAns.flawsText}
+                                        onChange={e => handleTextAnswer(currentQ.id, 'flawsText', e.target.value)}
+                                        placeholder="Explain missing PARTITION BY, misplaced WHERE order_status filter..."
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                        2. Refactored SQL Query Solution:
+                                      </label>
+                                      <textarea
+                                        rows={3}
+                                        value={textAns.sqlText}
+                                        onChange={e => handleTextAnswer(currentQ.id, 'sqlText', e.target.value)}
+                                        placeholder="WITH RankedOrders AS ( ... )"
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-mono text-xs text-sky-300 focus:outline-none focus:border-sky-500"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Completion Screen */}
+                    {candidateSlide > activeQuestions.length && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center max-w-lg mx-auto shadow-2xl space-y-4">
+                        <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-2xl">
+                          <i className="fa-solid fa-circle-check"></i>
+                        </div>
+                        <h2 className="text-2xl font-bold text-white">Assessment Complete!</h2>
+                        <p className="text-slate-400 text-xs">
+                          Thank you <span className="text-sky-400 font-bold">{candidateInfo.name}</span>. Your choices and SQL responses have been recorded in the database.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setRoute('candidate_entry');
+                            setCandidateSlide(0);
+                            setCandidateAnswers({});
+                            setCandidateTextAnswers({});
+                          }}
+                          className="mt-4 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-all"
+                        >
+                          Return to Entry Screen
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Bottom Navigation Controls Bar */}
+                    {candidateSlide >= 1 && candidateSlide <= activeQuestions.length && (
+                      <div className="flex justify-between items-center bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur-sm">
+                        <button
+                          onClick={() => setCandidateSlide(prev => Math.max(1, prev - 1))}
+                          disabled={candidateSlide === 1}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold rounded-lg text-slate-300 flex items-center space-x-1"
+                        >
+                          <i className="fa-solid fa-chevron-left"></i>
+                          <span>Previous</span>
+                        </button>
+
+                        <div className="flex items-center space-x-1.5">
+                          {activeQuestions.map((_, idx) => (
+                            <div
+                              key={idx}
+                              onClick={() => setCandidateSlide(idx + 1)}
+                              className={`h-2 rounded-full cursor-pointer transition-all ${
+                                candidateSlide === idx + 1 ? 'w-6 bg-sky-500' : 'w-2 bg-slate-700 hover:bg-slate-600'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {candidateSlide < activeQuestions.length ? (
+                          <button
+                            onClick={() => setCandidateSlide(prev => prev + 1)}
+                            className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg flex items-center space-x-1"
+                          >
+                            <span>Next Question</span>
+                            <i className="fa-solid fa-chevron-right"></i>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleSubmitExam}
+                            className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg flex items-center space-x-1"
+                          >
+                            <i className="fa-solid fa-paper-plane"></i>
+                            <span>Submit Exam</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
+                {/* VIEW 3: ADMIN LOGIN PAGE */}
+                {route === 'admin_login' && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-5">
+                    <div className="flex items-center space-x-3 text-amber-400 border-b border-slate-800 pb-3">
+                      <i className="fa-solid fa-lock text-xl"></i>
+                      <h2 className="text-xl font-bold text-white">Admin Authentication</h2>
+                    </div>
+
+                    <p className="text-xs text-slate-400">
+                      Sign in to view candidate result matrices, manage question banks, and generate custom technical screens.
+                    </p>
+
+                    {adminAuth.error && (
+                      <div className="p-3 bg-red-950/80 border border-red-800 rounded-lg text-xs text-red-300 flex items-center gap-2">
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                        <span>{adminAuth.error}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleAdminLogin} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">Admin ID</label>
+                        <input
+                          type="text"
+                          required
+                          value={adminAuth.id}
+                          onChange={e => setAdminAuth({ ...adminAuth, id: e.target.value })}
+                          placeholder="admin"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                        <input
+                          type="password"
+                          required
+                          value={adminAuth.password}
+                          onChange={e => setAdminAuth({ ...adminAuth, password: e.target.value })}
+                          placeholder="yassir2026!"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center space-x-2"
+                      >
+                        <span>Unlock Admin Workspace</span>
+                        <i className="fa-solid fa-key"></i>
+                      </button>
+                    </form>
+                    <div className="text-[10px] text-slate-500 text-center font-mono">
+                      Default Credentials: ID: <span className="text-amber-400">admin</span> | Pass: <span className="text-amber-400">yassir2026!</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* PAGE 1: QUESTION REPOSITORY PAGE */}
+                {route === 'page_questions' && (
+                  <div className="w-full max-w-7xl h-full flex flex-col space-y-5">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex justify-between items-center">
+                      <div>
+                        <h2 className="text-base font-bold text-white flex items-center gap-2">
+                          <i className="fa-solid fa-database text-sky-400"></i>
+                          <span>Question Repository Bank</span>
+                        </h2>
+                        <p className="text-xs text-slate-400">Manage all technical questions, SQL challenges, and associated database schemas.</p>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setEditingQuestion({});
+                          setNewQuestionForm({
+                            title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
+                            options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
+                            correct: 'A', explanation: ''
+                          });
+                        }}
+                        className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow-lg shadow-sky-500/20"
+                      >
+                        <i className="fa-solid fa-plus"></i>
+                        <span>Add New Question</span>
+                      </button>
+                    </div>
+
+                    {/* Question Repository Grid */}
+                    <div className="grid grid-cols-1 gap-3 overflow-y-auto max-h-[70vh] pr-1">
+                      {questionBank.map((q, idx) => (
+                        <div key={q.id} className="p-4 bg-slate-900 rounded-xl border border-slate-800 flex justify-between items-start text-xs space-x-4">
+                          <div className="space-y-1.5 flex-1">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-white text-sm">#{idx + 1}. {q.title}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
+                                q.difficulty === 'Easy' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                                q.difficulty === 'Medium' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+                                'bg-red-950 text-red-400 border border-red-800'
+                              }`}>
+                                {q.difficulty}
+                              </span>
+                              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono uppercase">
+                                {q.type}
+                              </span>
+                            </div>
+
+                            <p className="text-slate-300 leading-relaxed">{q.question}</p>
+
+                            {q.type === 'mcq' && (
+                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800 text-[11px] font-mono">
+                                {q.options.map(opt => (
+                                  <div key={opt.id} className={`p-1.5 rounded border ${opt.id === q.correct ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+                                    <strong>[{opt.id}]</strong> {opt.text}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-col items-end space-y-2">
+                            <span className="text-[10px] font-mono text-amber-400 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+                              {SCHEMAS[q.schemaId]?.name || 'Default'}
+                            </span>
+                            <div className="flex items-center space-x-1.5">
+                              <button
+                                onClick={() => {
+                                  setEditingQuestion(q);
+                                  setNewQuestionForm({ ...q });
+                                }}
+                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-semibold"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteQuestion(q.id)}
+                                className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded text-[11px] font-semibold"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* PAGE 2: EXAM TEMPLATES & LINK GENERATOR PAGE */}
+                {route === 'page_exams' && (
+                  <div className="w-full max-w-7xl h-full grid grid-cols-12 gap-6">
+                    
+                    {/* LEFT PANEL: EXAM BUILDER FORM */}
+                    <div className="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                      <div className="border-b border-slate-800 pb-3">
+                        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                          <i className="fa-solid fa-square-plus text-amber-400"></i>
+                          <span>Build Exam Template</span>
+                        </h3>
+                        <p className="text-xs text-slate-400">Select questions and generate direct assessment links for candidates.</p>
+                      </div>
+
+                      <form onSubmit={handleCreateExam} className="space-y-3 text-xs">
+                        <div>
+                          <label className="block font-semibold text-slate-300 mb-1">Exam Template Title</label>
+                          <input
+                            type="text"
+                            required
+                            value={newExamForm.title}
+                            onChange={e => setNewExamForm({ ...newExamForm, title: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block font-semibold text-slate-300 mb-1">Time Limit (Mins)</label>
+                            <input
+                              type="number"
+                              required
+                              value={newExamForm.timeLimitMinutes}
+                              onChange={e => setNewExamForm({ ...newExamForm, timeLimitMinutes: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-semibold text-slate-300 mb-1">Pass Score (%)</label>
+                            <input
+                              type="number"
+                              required
+                              value={newExamForm.passScore}
+                              onChange={e => setNewExamForm({ ...newExamForm, passScore: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block font-semibold text-slate-300 mb-1">Select Questions ({newExamForm.selectedQuestionIds.length} Selected)</label>
+                          <div className="max-h-48 overflow-y-auto bg-slate-950 p-2 rounded border border-slate-800 space-y-1">
+                            {questionBank.map(q => {
+                              const isSelected = newExamForm.selectedQuestionIds.includes(q.id);
+                              return (
+                                <label key={q.id} className="flex items-center space-x-2 text-[11px] text-slate-300 cursor-pointer hover:text-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setNewExamForm({ ...newExamForm, selectedQuestionIds: [...newExamForm.selectedQuestionIds, q.id] });
+                                      } else {
+                                        setNewExamForm({ ...newExamForm, selectedQuestionIds: newExamForm.selectedQuestionIds.filter(id => id !== q.id) });
+                                      }
+                                    }}
+                                    className="rounded border-slate-700 text-amber-500"
+                                  />
+                                  <span className="truncate">{q.title} ({q.difficulty})</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center space-x-1"
+                        >
+                          <i className="fa-solid fa-link"></i>
+                          <span>Generate Exam Template & Link</span>
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* RIGHT PANEL: CREATED EXAM TEMPLATES LIST */}
+                    <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                      <div className="border-b border-slate-800 pb-3">
+                        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                          <i className="fa-solid fa-link text-sky-400"></i>
+                          <span>Active Exam Papers & Direct Share Links</span>
+                        </h3>
+                      </div>
+
+                      <div className="space-y-3 overflow-y-auto max-h-[65vh]">
+                        {exams.map(ex => (
+                          <div key={ex.id} className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="font-bold text-white text-sm">{ex.title}</h4>
+                                <p className="text-[11px] text-slate-400">{ex.questionIds.length} Questions • {ex.timeLimitMinutes} Mins Limit • Pass Mark {ex.passScore || 70}%</p>
+                              </div>
+                              <span className="bg-amber-950 text-amber-400 border border-amber-800 px-3 py-1 rounded font-mono font-bold text-xs">
+                                {ex.accessCode}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                              <span className="text-[10px] text-slate-500 font-mono truncate max-w-md">
+                                {window.location.origin}{window.location.pathname}#exam={ex.accessCode}
+                              </span>
+                              <button
+                                onClick={() => copyExamLink(ex.accessCode)}
+                                className="px-3 py-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded text-[11px] flex items-center space-x-1 shrink-0"
+                              >
+                                <i className="fa-solid fa-copy"></i>
+                                <span>Copy Link</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* PAGE 3: CANDIDATE RESULTS MATRIX PAGE */}
+                {route === 'page_results' && (
+                  <div className="w-full max-w-7xl h-full flex flex-col space-y-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex justify-between items-center">
+                      <div>
+                        <h2 className="text-base font-bold text-white flex items-center gap-2">
+                          <i className="fa-solid fa-square-poll-vertical text-emerald-400"></i>
+                          <span>Candidate Assessment Results</span>
+                        </h2>
+                        <p className="text-xs text-slate-400">View real-time test submissions, candidate scores, and individual SQL code answers.</p>
+                      </div>
+
+                      <div className="text-xs font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+                        Total Candidates Logged: <strong className="text-emerald-400">{submissions.length}</strong>
+                      </div>
+                    </div>
+
+                    {submissions.length === 0 ? (
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-xs text-slate-500 space-y-2">
+                        <i className="fa-regular fa-folder-open text-3xl text-slate-700"></i>
+                        <p>No candidate submissions logged yet. Share an exam access code or launch candidate screen to record a test.</p>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-950 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800">
+                            <tr>
+                              <th className="p-3">Candidate</th>
+                              <th className="p-3">Exam Paper</th>
+                              <th className="p-3">MCQ Score</th>
+                              <th className="p-3">Duration</th>
+                              <th className="p-3">Submitted At</th>
+                              <th className="p-3">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800 text-slate-300">
+                            {submissions.map(sub => (
+                              <tr key={sub.id} className="hover:bg-slate-950/50">
+                                <td className="p-3 font-medium text-white">
+                                  <div>{sub.candidateName}</div>
+                                  <div className="text-[10px] text-slate-500">{sub.candidateEmail}</div>
+                                </td>
+                                <td className="p-3 text-slate-400">{sub.examTitle}</td>
+                                <td className="p-3 font-mono">
+                                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded font-bold">
+                                    {sub.mcqScore} / {sub.mcqTotal} ({sub.percentage}%)
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono text-slate-400">{formatTime(sub.timeTakenSeconds || 0)}</td>
+                                <td className="p-3 text-slate-500 text-[11px]">{sub.submittedAt}</td>
+                                <td className="p-3">
+                                  <button
+                                    onClick={() => setSelectedSubmission(sub)}
+                                    className="px-3 py-1 bg-sky-950 text-sky-400 border border-sky-800 hover:bg-sky-900 rounded font-bold text-[11px] flex items-center space-x-1"
+                                  >
+                                    <i className="fa-solid fa-eye"></i>
+                                    <span>Inspect Breakdown</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* PAGE 4: ADMIN DETAILS & SETTINGS PAGE */}
+                {route === 'page_settings' && (
+                  <div className="w-full max-w-4xl space-y-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+                      <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
+                        <i className="fa-solid fa-user-shield text-amber-400 text-xl"></i>
+                        <div>
+                          <h3 className="text-base font-bold text-white">Admin Credentials & System Configuration</h3>
+                          <p className="text-xs text-slate-400">Logged in evaluator session details and platform controls.</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                          <span className="text-slate-500 block">Evaluator Name</span>
+                          <span className="text-white font-bold">{adminAuth.name}</span>
+                        </div>
+                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                          <span className="text-slate-500 block">System Role</span>
+                          <span className="text-amber-400 font-bold">{adminAuth.role}</span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2 text-xs">
+                        <span className="text-sky-400 font-bold block">Database Stats & Storage</span>
+                        <div className="grid grid-cols-3 gap-2 text-[11px]">
+                          <div>Questions in Repository: <strong>{questionBank.length}</strong></div>
+                          <div>Exam Templates Active: <strong>{exams.length}</strong></div>
+                          <div>Candidate Submissions: <strong>{submissions.length}</strong></div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2">
+                        <button
+                          onClick={() => {
+                            const exportData = { questionBank, exams, submissions };
+                            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `yassir_exam_system_backup_${Date.now()}.json`;
+                            a.click();
+                            showToast("System database exported as JSON file!");
+                          }}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-lg border border-slate-700 flex items-center space-x-1.5"
+                        >
+                          <i className="fa-solid fa-download"></i>
+                          <span>Export System Database (JSON)</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setAdminAuth({ ...adminAuth, isAuthenticated: false });
+                            setRoute('candidate_entry');
+                            showToast("Admin session logged out.");
+                          }}
+                          className="px-4 py-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-bold rounded-lg flex items-center space-x-1.5"
+                        >
+                          <i className="fa-solid fa-right-from-bracket"></i>
+                          <span>Log Out Admin Session</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: SUBMISSION DETAILED INSPECTOR */}
+                {selectedSubmission && (
+                  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[85vh] overflow-y-auto">
+                      <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                        <div>
+                          <h3 className="text-lg font-bold text-white">{selectedSubmission.candidateName}</h3>
+                          <p className="text-xs text-slate-400">{selectedSubmission.candidateEmail}</p>
+                        </div>
+                        <button onClick={() => setSelectedSubmission(null)} className="text-slate-400 hover:text-white">
+                          <i className="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                          <span className="text-slate-500 block">MCQ Score</span>
+                          <span className="text-lg font-bold text-emerald-400">{selectedSubmission.mcqScore} / {selectedSubmission.mcqTotal} ({selectedSubmission.percentage}%)</span>
+                        </div>
+                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                          <span className="text-slate-500 block">Duration</span>
+                          <span className="text-lg font-bold text-sky-400">{formatTime(selectedSubmission.timeTakenSeconds || 0)}</span>
+                        </div>
+                      </div>
+
+                      {/* Scenario Answers */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-bold text-amber-400 uppercase">Scenario & SQL Code Submissions</h4>
+                        {Object.keys(selectedSubmission.textAnswers || {}).length === 0 ? (
+                          <p className="text-xs text-slate-500 italic">No scenario questions were in this test session.</p>
+                        ) : (
+                          Object.entries(selectedSubmission.textAnswers).map(([qid, ans]) => (
+                            <div key={qid} className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2 text-xs">
+                              <span className="font-bold text-slate-300 block">Question ID: {qid}</span>
+                              {ans.flawsText && (
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">Identified Logical Bugs:</span>
+                                  <p className="text-slate-200">{ans.flawsText}</p>
+                                </div>
+                              )}
+                              {ans.sqlText && (
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">Submitted SQL Code:</span>
+                                  <pre className="p-2 bg-slate-900 font-mono text-sky-300 rounded text-[11px] overflow-x-auto">{ans.sqlText}</pre>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: ADD / EDIT QUESTION FORM */}
+                {editingQuestion && (
+                  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                        <h3 className="text-base font-bold text-white">
+                          {editingQuestion.id ? 'Edit Question' : 'Add New Question'}
+                        </h3>
+                        <button onClick={() => setEditingQuestion(null)} className="text-slate-400 hover:text-white">
+                          <i className="fa-solid fa-xmark"></i>
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveQuestion} className="space-y-3 text-xs">
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Title</label>
+                          <input
+                            type="text"
+                            required
+                            value={newQuestionForm.title}
+                            onChange={e => setNewQuestionForm({ ...newQuestionForm, title: e.target.value })}
+                            placeholder="e.g. Window Function Rank"
+                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-400 font-semibold mb-1">Schema</label>
+                            <select
+                              value={newQuestionForm.schemaId}
+                              onChange={e => setNewQuestionForm({ ...newQuestionForm, schemaId: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                            >
+                              {Object.values(SCHEMAS).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 font-semibold mb-1">Difficulty</label>
+                            <select
+                              value={newQuestionForm.difficulty}
+                              onChange={e => setNewQuestionForm({ ...newQuestionForm, difficulty: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                            >
+                              <option value="Easy">Easy</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Hard">Hard</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Question Prompt</label>
+                          <textarea
+                            rows={3}
+                            required
+                            value={newQuestionForm.question}
+                            onChange={e => setNewQuestionForm({ ...newQuestionForm, question: e.target.value })}
+                            placeholder="Type question prompt..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                          />
+                        </div>
+
+                        <button type="submit" className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded">
+                          Save to Question Bank
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+              </main>
+
+              {/* FOOTER */}
+              <footer className="h-10 border-t border-slate-900 bg-slate-950 px-6 flex items-center justify-between text-[11px] text-slate-500">
+                <div>Yassir Technical Examination System • Hosted on GitHub Pages</div>
+                <div className="font-mono">
+                  Active Page: <strong className="text-slate-300 uppercase">{route}</strong>
+                </div>
+              </footer>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
