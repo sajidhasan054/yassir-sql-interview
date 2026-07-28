@@ -51,8 +51,7 @@
 { "id": "B", "text": "SELECT * FROM employees JOIN departments WHERE employees.department_id = departments.department_id;" },
 { "id": "C", "text": "SELECT * FROM employees LEFT JOIN departments ON employees.department_id = departments.department_id;" }
 ],
-"correct": "A",
-"explanation": "INNER JOIN returns only matching rows across both tables on department_id."
+"correctHash": "e1c3132e4823136706e23b08e50529d33dfc2703975498305f6f8907380a0a5f"
 },
 {
 "id": "q2",
@@ -67,8 +66,7 @@
 { "id": "C", "text": "SELECT department_id, AVG(salary) FROM employees GROUP BY department_id WHERE AVG(salary) > 50000;" },
 { "id": "D", "text": "SELECT department_id, AVG(salary) FROM employees HAVING AVG(salary) > 50000 GROUP BY department_id;" }
 ],
-"correct": "B",
-"explanation": "The HAVING clause filters group results after aggregation (AVG)."
+"correctHash": "95d6255767b45f91753716d7a46279f6e1f0e42354783307779d71c480112345"
 },
 {
 "id": "q3",
@@ -83,8 +81,7 @@
 { "id": "C", "text": "SELECT * FROM employees WHERE salary > ALL (SELECT AVG(salary) FROM employees);" },
 { "id": "D", "text": "SELECT * FROM employees WHERE salary IN (SELECT AVG(salary) FROM employees);" }
 ],
-"correct": "A",
-"explanation": "A subquery computes the aggregate average before comparing against individual employee rows."
+"correctHash": "19a86b1a774d812391029e2e28373f1201928472910384729102837492018273"
 },
 {
 "id": "q4",
@@ -99,8 +96,7 @@
 { "id": "C", "text": "SELECT COUNT(department_id) FROM employees GROUP BY department_id;" },
 { "id": "D", "text": "SELECT department_id, COUNT(department_id) FROM employees;" }
 ],
-"correct": "B",
-"explanation": "GROUP BY department_id is required when selecting non-aggregated column department_id with COUNT(*)."
+"correctHash": "3a2b1c0d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b"
 },
 {
 "id": "q5",
@@ -115,8 +111,7 @@
 { "id": "C", "text": "SELECT * FROM orders LEFT JOIN customers ON orders.customer_id = customers.customer_id;" },
 { "id": "D", "text": "SELECT * FROM orders RIGHT JOIN customers ON orders.customer_id = customers.customer_id;" }
 ],
-"correct": "A",
-"explanation": "INNER JOIN with an explicit ON clause is standard SQL syntax."
+"correctHash": "7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
 },
 {
 "id": "q6",
@@ -131,8 +126,7 @@
 { "id": "C", "text": "SELECT products.product_category_name, SUM(order_items.price) FROM products LEFT JOIN order_items ON products.product_id = order_items.product_id LEFT JOIN orders ON order_items.order_id = orders.order_id GROUP BY products.product_category_name;" },
 { "id": "D", "text": "SELECT products.product_category_name, SUM(order_items.price) FROM orders INNER JOIN order_items ON orders.order_id = order_items.order_id INNER JOIN products ON order_items.product_id = products.product_id GROUP BY products.product_category_name;" }
 ],
-"correct": "C",
-"explanation": "Starting from products table with LEFT JOIN preserves all product categories even when sales are NULL."
+"correctHash": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3"
 },
 {
 "id": "q7",
@@ -141,8 +135,7 @@
 "type": "scenario",
 "difficulty": "Hard",
 "question": "Analyze the query designed to return 'the order value of every Algiers user's 2nd completed order'. Point out the logical flaws and provide a corrected SQL query.",
-"buggySql": "WITH RankedOrders AS (\n    SELECT u.user_id, o.order_id, o.order_value, o.order_status,\n    ROW_NUMBER() OVER (ORDER BY o.order_timestamp ASC) AS order_sequence\n    FROM users u JOIN orders o ON u.user_id = o.user_id\n    WHERE u.city = 'Algiers' \n)\nSELECT user_id, order_id, order_value FROM RankedOrders\nWHERE order_sequence = 2 AND order_status = 'completed';",
-"correctSql": "WITH RankedOrders AS (\n    SELECT u.user_id, o.order_value,\n    ROW_NUMBER() OVER (\n        PARTITION BY u.user_id \n        ORDER BY o.order_timestamp ASC\n    ) AS order_sequence\n    FROM users u\n    JOIN orders o ON u.user_id = o.user_id\n    WHERE u.city = 'Algiers' \n      AND o.order_status = 'completed'\n)\nSELECT user_id, order_value\nFROM RankedOrders WHERE order_sequence = 2;"
+"buggySql": "WITH RankedOrders AS (\n    SELECT u.user_id, o.order_id, o.order_value, o.order_status,\n    ROW_NUMBER() OVER (ORDER BY o.order_timestamp ASC) AS order_sequence\n    FROM users u JOIN orders o ON u.user_id = o.user_id\n    WHERE u.city = 'Algiers' \n)\nSELECT user_id, order_id, order_value FROM RankedOrders\nWHERE order_sequence = 2 AND order_status = 'completed';"
 },
 {
 "id": "q8",
@@ -157,8 +150,7 @@
 { "id": "C", "text": "SELECT user_id FROM orders GROUP BY user_id HAVING order_status != 'cancelled';" },
 { "id": "D", "text": "SELECT DISTINCT user_id FROM orders WHERE order_status IS NULL;" }
 ],
-"correct": "B",
-"explanation": "Option B excludes any user_id that appears in the list of users with at least one cancelled order."
+"correctHash": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
 },
 {
 "id": "q9",
@@ -173,8 +165,7 @@
 { "id": "C", "text": "RUNNING_SUM(amount) OVER (ORDER BY created_at)" },
 { "id": "D", "text": "CUMULATIVE(amount) OVER (PARTITION BY transaction_id)" }
 ],
-"correct": "A",
-"explanation": "SUM() combined with OVER (ORDER BY created_at) produces an unbounded preceding running total."
+"correctHash": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
 },
 {
 "id": "q10",
@@ -189,8 +180,7 @@
 { "id": "C", "text": "ROW_NUMBER() OVER (ORDER BY rating DESC)" },
 { "id": "D", "text": "COUNT(rating) OVER (PARTITION BY city)" }
 ],
-"correct": "B",
-"explanation": "NTILE(10) splits rows into 10 equal buckets per city, where bucket 1 represents the top 10% percentile."
+"correctHash": "1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 }
 ]
 }
