@@ -240,8 +240,15 @@
             setTimeout(() => setToast(null), 3500);
           };
 
-          // Admin Authentication
-          const [adminAuth, setAdminAuth] = useState({ id: 'admin', password: '', isAuthenticated: true, error: '', name: 'Interviewer Admin', role: 'Lead Data Analytics Evaluator' });
+          // Admin Authentication (isAuthenticated is FALSE by default to secure candidate mode)
+          const [adminAuth, setAdminAuth] = useState({ 
+            id: 'admin', 
+            password: '', 
+            isAuthenticated: false, 
+            error: '', 
+            name: 'Interviewer Admin', 
+            role: 'Lead Data Analytics Evaluator' 
+          });
 
           // Repositories in LocalStorage
           const [questionBank, setQuestionBank] = useState(() => {
@@ -291,7 +298,8 @@
           const [selectedSubmission, setSelectedSubmission] = useState(null);
 
           // Admin Add/Edit Question Modal State
-          const [editingQuestion, setEditingQuestion] = useState(null); // null = off, {} = question object
+          const [editingQuestion, setEditingQuestion] = useState(null);
+
           const [newQuestionForm, setNewQuestionForm] = useState({
             title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
             options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
@@ -323,14 +331,14 @@
                   setCandidateInfo(prev => ({ ...prev, examCode: foundExam.accessCode }));
                   setRoute('candidate_entry');
                 }
-              } else if (hash === 'questions') {
-                setRoute('page_questions');
-              } else if (hash === 'exams') {
-                setRoute('page_exams');
-              } else if (hash === 'results') {
-                setRoute('page_results');
-              } else if (hash === 'settings') {
-                setRoute('page_settings');
+              } else if (['questions', 'exams', 'results', 'settings'].includes(hash)) {
+                if (adminAuth.isAuthenticated) {
+                  setRoute(`page_${hash}`);
+                } else {
+                  setRoute('admin_login');
+                }
+              } else if (hash === 'admin') {
+                setRoute('admin_login');
               } else if (hash === 'candidate') {
                 setRoute('candidate_entry');
               }
@@ -339,7 +347,7 @@
             parseHash();
             window.addEventListener('hashchange', parseHash);
             return () => window.removeEventListener('hashchange', parseHash);
-          }, [exams]);
+          }, [exams, adminAuth.isAuthenticated]);
 
           // Active exam details
           const activeExam = exams.find(e => e.id === activeExamId) || exams[0];
@@ -499,6 +507,7 @@
                 </div>
               )}
 
+              {}
               {/* TOP APPLICATION HEADER WITH MULTI-PAGE NAVIGATION */}
               <header className="h-16 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
                 <div className="flex items-center space-x-3">
@@ -519,83 +528,115 @@
                   </div>
                 )}
 
-                {/* MULTI-PAGE SYSTEM NAVIGATION TABS */}
-                <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                  
-                  {/* Candidate Entrance */}
-                  <button
-                    onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                      route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <i className="fa-solid fa-pen-to-square"></i>
-                    <span>Candidate Screen</span>
-                  </button>
+                {/* NAVIGATION TABS: SHOWN ONLY WHEN ADMIN IS AUTHENTICATED */}
+                {adminAuth.isAuthenticated ? (
+                  <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                    
+                    {/* Candidate Entrance */}
+                    <button
+                      onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-pen-to-square"></i>
+                      <span>Candidate View</span>
+                    </button>
 
-                  <div className="h-4 w-px bg-slate-800 mx-1"></div>
+                    <div className="h-4 w-px bg-slate-800 mx-1"></div>
 
-                  {/* Admin Page 1: Question Repository */}
-                  <button
-                    onClick={() => {
-                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
-                      else { setRoute('page_questions'); window.location.hash = 'questions'; }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                      route === 'page_questions' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <i className="fa-solid fa-database"></i>
-                    <span>Questions ({questionBank.length})</span>
-                  </button>
+                    {/* Admin Page 1: Question Repository */}
+                    <button
+                      onClick={() => { setRoute('page_questions'); window.location.hash = 'questions'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route === 'page_questions' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-database"></i>
+                      <span>Questions ({questionBank.length})</span>
+                    </button>
 
-                  {/* Admin Page 2: Exam Templates */}
-                  <button
-                    onClick={() => {
-                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
-                      else { setRoute('page_exams'); window.location.hash = 'exams'; }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                      route === 'page_exams' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <i className="fa-solid fa-layer-group"></i>
-                    <span>Exams & Links ({exams.length})</span>
-                  </button>
+                    {/* Admin Page 2: Exam Templates */}
+                    <button
+                      onClick={() => { setRoute('page_exams'); window.location.hash = 'exams'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route === 'page_exams' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-layer-group"></i>
+                      <span>Exams ({exams.length})</span>
+                    </button>
 
-                  {/* Admin Page 3: Candidate Results */}
-                  <button
-                    onClick={() => {
-                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
-                      else { setRoute('page_results'); window.location.hash = 'results'; }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                      route === 'page_results' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <i className="fa-solid fa-square-poll-vertical"></i>
-                    <span>Results ({submissions.length})</span>
-                  </button>
+                    {/* Admin Page 3: Candidate Results */}
+                    <button
+                      onClick={() => { setRoute('page_results'); window.location.hash = 'results'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route === 'page_results' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-square-poll-vertical"></i>
+                      <span>Results ({submissions.length})</span>
+                    </button>
 
-                  {/* Admin Page 4: Admin Profile Details & Settings */}
-                  <button
-                    onClick={() => {
-                      if (!adminAuth.isAuthenticated) { setRoute('admin_login'); window.location.hash = 'admin'; }
-                      else { setRoute('page_settings'); window.location.hash = 'settings'; }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                      route === 'page_settings' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <i className="fa-solid fa-user-shield"></i>
-                    <span>Admin Details</span>
-                  </button>
+                    {/* Admin Page 4: Admin Profile Details & Settings */}
+                    <button
+                      onClick={() => { setRoute('page_settings'); window.location.hash = 'settings'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route === 'page_settings' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-user-shield"></i>
+                      <span>Admin</span>
+                    </button>
 
-                </div>
+                    {/* Admin Log Out Button */}
+                    <button
+                      onClick={() => {
+                        setAdminAuth(prev => ({ ...prev, isAuthenticated: false }));
+                        setRoute('candidate_entry');
+                        window.location.hash = 'candidate';
+                        showToast("Admin session logged out.");
+                      }}
+                      className="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg font-bold transition-all flex items-center space-x-1 text-xs"
+                      title="Log Out Admin"
+                    >
+                      <i className="fa-solid fa-right-from-bracket"></i>
+                      <span>Log Out</span>
+                    </button>
+
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => { setRoute('admin_login'); window.location.hash = 'admin'; }}
+                      className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg transition-all flex items-center space-x-1.5 opacity-60 hover:opacity-100"
+                    >
+                      <i className="fa-solid fa-lock text-amber-400"></i>
+                      <span>Admin Portal</span>
+                    </button>
+                  </div>
+                )}
               </header>
 
               {/* MAIN PAGE VIEW RENDERER */}
               <main className="flex-1 p-6 flex items-center justify-center relative">
+
+                {/* ROUTE GUARD FOR UNAUTHENTICATED ADMIN PAGES */}
+                {route.startsWith('page_') && !adminAuth.isAuthenticated && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-4 text-center">
+                    <div className="w-12 h-12 bg-amber-500/10 text-amber-400 border border-amber-800 rounded-full flex items-center justify-center mx-auto text-xl">
+                      <i className="fa-solid fa-lock"></i>
+                    </div>
+                    <h3 className="text-lg font-bold text-white">Admin Authentication Required</h3>
+                    <p className="text-xs text-slate-400">You must log in with Admin credentials to access question management, exam templates, and candidate results.</p>
+                    <button
+                      onClick={() => setRoute('admin_login')}
+                      className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition-all"
+                    >
+                      Go to Admin Login
+                    </button>
+                  </div>
+                )}
 
                 {/* VIEW 1: CANDIDATE REGISTRATION ENTRY PAGE */}
                 {route === 'candidate_entry' && (
