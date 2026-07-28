@@ -319,6 +319,10 @@
           useEffect(() => { localStorage.setItem('yassir_exams', JSON.stringify(exams)); }, [exams]);
           useEffect(() => { localStorage.setItem('yassir_submissions', JSON.stringify(submissions)); }, [submissions]);
 
+          // Keep ref of adminAuth to avoid stale closures in hashchange listener
+          const adminAuthRef = React.useRef(adminAuth);
+          useEffect(() => { adminAuthRef.current = adminAuth; }, [adminAuth]);
+
           // Handle Hash Link Navigation (e.g. #exam=YASSIR-2026 or #questions)
           useEffect(() => {
             const parseHash = () => {
@@ -332,13 +336,18 @@
                   setRoute('candidate_entry');
                 }
               } else if (['questions', 'exams', 'results', 'settings'].includes(hash)) {
-                if (adminAuth.isAuthenticated) {
+                if (adminAuthRef.current.isAuthenticated) {
                   setRoute(`page_${hash}`);
                 } else {
                   setRoute('admin_login');
                 }
               } else if (hash === 'admin') {
-                setRoute('admin_login');
+                if (adminAuthRef.current.isAuthenticated) {
+                  setRoute('page_results');
+                  window.location.hash = 'results';
+                } else {
+                  setRoute('admin_login');
+                }
               } else if (hash === 'candidate') {
                 setRoute('candidate_entry');
               }
@@ -347,7 +356,7 @@
             parseHash();
             window.addEventListener('hashchange', parseHash);
             return () => window.removeEventListener('hashchange', parseHash);
-          }, [exams, adminAuth.isAuthenticated]);
+          }, [exams]);
 
           // Active exam details
           const activeExam = exams.find(e => e.id === activeExamId) || exams[0];
@@ -528,14 +537,14 @@
                   </div>
                 )}
 
-                {/* NAVIGATION TABS: SHOWN ONLY WHEN ADMIN IS AUTHENTICATED */}
+                {/* NAVIGATION TABS */}
                 {adminAuth.isAuthenticated ? (
-                  <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs overflow-x-auto max-w-full">
                     
                     {/* Candidate Entrance */}
                     <button
                       onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -543,12 +552,12 @@
                       <span>Candidate View</span>
                     </button>
 
-                    <div className="h-4 w-px bg-slate-800 mx-1"></div>
+                    <div className="h-4 w-px bg-slate-800 mx-1 shrink-0"></div>
 
                     {/* Admin Page 1: Question Repository */}
                     <button
                       onClick={() => { setRoute('page_questions'); window.location.hash = 'questions'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         route === 'page_questions' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -559,7 +568,7 @@
                     {/* Admin Page 2: Exam Templates */}
                     <button
                       onClick={() => { setRoute('page_exams'); window.location.hash = 'exams'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         route === 'page_exams' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -570,7 +579,7 @@
                     {/* Admin Page 3: Candidate Results */}
                     <button
                       onClick={() => { setRoute('page_results'); window.location.hash = 'results'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         route === 'page_results' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -581,7 +590,7 @@
                     {/* Admin Page 4: Admin Profile Details & Settings */}
                     <button
                       onClick={() => { setRoute('page_settings'); window.location.hash = 'settings'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
                         route === 'page_settings' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -597,7 +606,7 @@
                         window.location.hash = 'candidate';
                         showToast("Admin session logged out.");
                       }}
-                      className="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg font-bold transition-all flex items-center space-x-1 text-xs"
+                      className="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg font-bold transition-all flex items-center space-x-1 text-xs shrink-0"
                       title="Log Out Admin"
                     >
                       <i className="fa-solid fa-right-from-bracket"></i>
@@ -606,10 +615,22 @@
 
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <i className="fa-solid fa-pen-to-square"></i>
+                      <span>Candidate View</span>
+                    </button>
+
                     <button
                       onClick={() => { setRoute('admin_login'); window.location.hash = 'admin'; }}
-                      className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg transition-all flex items-center space-x-1.5 opacity-60 hover:opacity-100"
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
+                        route === 'admin_login' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
                     >
                       <i className="fa-solid fa-lock text-amber-400"></i>
                       <span>Admin Portal</span>
@@ -935,7 +956,7 @@
                           required
                           value={adminAuth.password}
                           onChange={e => setAdminAuth({ ...adminAuth, password: e.target.value })}
-                          placeholder="yassir2026!"
+                          placeholder="••••••••"
                           className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                         />
                       </div>
@@ -947,8 +968,16 @@
                         <span>Unlock Admin Workspace</span>
                         <i className="fa-solid fa-key"></i>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-xs transition-all flex items-center justify-center space-x-1.5 border border-slate-700"
+                      >
+                        <i className="fa-solid fa-arrow-left"></i>
+                        <span>Back to Candidate Portal</span>
+                      </button>
                     </form>
-                   
                   </div>
                 )}
 
