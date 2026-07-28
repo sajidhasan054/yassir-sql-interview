@@ -3,23 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yassir Technical Interview & Assessment Platform</title>
+    <title>Yassir Technical Assessment Platform</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel standalone for JSX -->
+    <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase JS SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
         .font-mono { font-family: 'Fira Code', monospace; }
         
-        /* Custom scrollbar styling */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #090d16; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
@@ -30,293 +33,96 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useCallback, useRef } = React;
-
-        // 1. DATABASE SCHEMAS DEFINITION
-        const SCHEMAS = {
-          olist: {
-            id: 'olist',
-            name: 'Olist E-Commerce Marketplace',
-            tables: [
-              { name: 'customers', cols: ['customer_id (PK)', 'customer_unique_id', 'customer_state', 'city'] },
-              { name: 'orders', cols: ['order_id (PK)', 'customer_id (FK)', 'order_status', 'order_purchase_timestamp'] },
-              { name: 'order_items', cols: ['order_id (FK)', 'order_item_id (PK)', 'product_id (FK)', 'price', 'freight_value'] },
-              { name: 'products', cols: ['product_id (PK)', 'product_category_name', 'product_weight_g'] }
-            ]
-          },
-          yassir_delivery: {
-            id: 'yassir_delivery',
-            name: 'Yassir Last-Mile Delivery',
-            tables: [
-              { name: 'users', cols: ['user_id (PK)', 'name', 'email', 'city', 'signup_date'] },
-              { name: 'orders', cols: ['order_id (PK)', 'user_id (FK)', 'driver_id (FK)', 'order_status', 'order_value', 'order_timestamp'] },
-              { name: 'drivers', cols: ['driver_id (PK)', 'vehicle_type', 'rating', 'city'] },
-              { name: 'city_geofence', cols: ['city_id (PK)', 'city_name', 'base_fare', 'surge_multiplier'] }
-            ]
-          },
-          hr_payroll: {
-            id: 'hr_payroll',
-            name: 'Corporate HR & Payroll',
-            tables: [
-              { name: 'employees', cols: ['employee_id (PK)', 'first_name', 'last_name', 'department_id (FK)', 'salary', 'hire_date'] },
-              { name: 'departments', cols: ['department_id (PK)', 'department_name', 'manager_id'] },
-              { name: 'performance_reviews', cols: ['review_id (PK)', 'employee_id (FK)', 'rating', 'review_year'] }
-            ]
-          },
-          fintech: {
-            id: 'fintech',
-            name: 'Fintech Payments & Wallets',
-            tables: [
-              { name: 'accounts', cols: ['account_id (PK)', 'user_id (FK)', 'currency', 'balance'] },
-              { name: 'transactions', cols: ['transaction_id (PK)', 'sender_acc (FK)', 'receiver_acc (FK)', 'amount', 'status', 'created_at'] }
-            ]
-          }
+        const firebaseConfig = {
+          apiKey: "",
+          authDomain: "",
+          projectId: "",
+          storageBucket: "",
+          messagingSenderId: "",
+          appId: ""
         };
 
-        const INITIAL_QUESTION_BANK = [
-          {
-            id: 'q1',
-            schemaId: 'hr_payroll',
-            title: 'Employee & Department Inner Join',
-            type: 'mcq',
-            difficulty: 'Easy',
-            question: 'How do you write a query to retrieve all columns from the employees and departments tables where the department_id matches?',
-            options: [
-              { id: 'A', text: 'SELECT * FROM employees INNER JOIN departments ON employees.department_id = departments.department_id;' },
-              { id: 'B', text: 'SELECT * FROM employees JOIN departments WHERE employees.department_id = departments.department_id;' },
-              { id: 'C', text: 'SELECT * FROM employees LEFT JOIN departments ON employees.department_id = departments.department_id;' }
-            ],
-            correct: 'A',
-            explanation: 'INNER JOIN returns only matching rows across both tables on department_id.'
-          },
-          {
-            id: 'q2',
-            schemaId: 'hr_payroll',
-            title: 'Filtering Aggregated Salaries',
-            type: 'mcq',
-            difficulty: 'Medium',
-            question: 'Which SQL query finds the average salary for each department, but only includes departments with an average salary greater than 50,000?',
-            options: [
-              { id: 'A', text: 'SELECT department_id, AVG(salary) FROM employees WHERE AVG(salary) > 50000 GROUP BY department_id;' },
-              { id: 'B', text: 'SELECT department_id, AVG(salary) FROM employees GROUP BY department_id HAVING AVG(salary) > 50000;' },
-              { id: 'C', text: 'SELECT department_id, AVG(salary) FROM employees GROUP BY department_id WHERE AVG(salary) > 50000;' },
-              { id: 'D', text: 'SELECT department_id, AVG(salary) FROM employees HAVING AVG(salary) > 50000 GROUP BY department_id;' }
-            ],
-            correct: 'B',
-            explanation: 'The HAVING clause filters group results after aggregation (AVG).'
-          },
-          {
-            id: 'q3',
-            schemaId: 'hr_payroll',
-            title: 'Subquery Comparison',
-            type: 'mcq',
-            difficulty: 'Medium',
-            question: 'Which SQL query retrieves all employees whose salary is greater than the overall average salary?',
-            options: [
-              { id: 'A', text: 'SELECT * FROM employees WHERE salary > (SELECT AVG(salary) FROM employees);' },
-              { id: 'B', text: 'SELECT * FROM employees WHERE salary > AVG(salary);' },
-              { id: 'C', text: 'SELECT * FROM employees WHERE salary > ALL (SELECT AVG(salary) FROM employees);' },
-              { id: 'D', text: 'SELECT * FROM employees WHERE salary IN (SELECT AVG(salary) FROM employees);' }
-            ],
-            correct: 'A',
-            explanation: 'A subquery computes the aggregate average before comparing against individual employee rows.'
-          },
-          {
-            id: 'q4',
-            schemaId: 'hr_payroll',
-            title: 'Department Headcount',
-            type: 'mcq',
-            difficulty: 'Easy',
-            question: 'Which SQL statement will count the total number of employees in each department?',
-            options: [
-              { id: 'A', text: 'SELECT department_id, COUNT(*) FROM employees;' },
-              { id: 'B', text: 'SELECT department_id, COUNT(*) FROM employees GROUP BY department_id;' },
-              { id: 'C', text: 'SELECT COUNT(department_id) FROM employees GROUP BY department_id;' },
-              { id: 'D', text: 'SELECT department_id, COUNT(department_id) FROM employees;' }
-            ],
-            correct: 'B',
-            explanation: 'GROUP BY department_id is required when selecting non-aggregated column department_id with COUNT(*).'
-          },
-          {
-            id: 'q5',
-            schemaId: 'olist',
-            title: 'Orders & Customers Linking',
-            type: 'mcq',
-            difficulty: 'Easy',
-            question: 'How would you write a query to combine rows from orders and customers where customer_id matches?',
-            options: [
-              { id: 'A', text: 'SELECT * FROM orders INNER JOIN customers ON orders.customer_id = customers.customer_id;' },
-              { id: 'B', text: 'SELECT * FROM orders JOIN customers WHERE orders.customer_id = customers.customer_id;' },
-              { id: 'C', text: 'SELECT * FROM orders LEFT JOIN customers ON orders.customer_id = customers.customer_id;' },
-              { id: 'D', text: 'SELECT * FROM orders RIGHT JOIN customers ON orders.customer_id = customers.customer_id;' }
-            ],
-            correct: 'A',
-            explanation: 'INNER JOIN with an explicit ON clause is standard SQL syntax.'
-          },
-          {
-            id: 'q6',
-            schemaId: 'olist',
-            title: 'Sales per Category (Including Zero Sales)',
-            type: 'mcq',
-            difficulty: 'Hard',
-            question: 'How would you find total sales per product category, INCLUDING categories without any order items?',
-            options: [
-              { id: 'A', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders RIGHT JOIN order_items ON orders.order_id = order_items.order_id RIGHT JOIN products ON order_items.product_id = products.product_id GROUP BY products.product_category_name;' },
-              { id: 'B', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders JOIN order_items USING(order_id) JOIN products USING(product_id) GROUP BY products.product_category_name;' },
-              { id: 'C', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM products LEFT JOIN order_items ON products.product_id = order_items.product_id LEFT JOIN orders ON order_items.order_id = orders.order_id GROUP BY products.product_category_name;' },
-              { id: 'D', text: 'SELECT products.product_category_name, SUM(order_items.price) FROM orders INNER JOIN order_items ON orders.order_id = order_items.order_id INNER JOIN products ON order_items.product_id = products.product_id GROUP BY products.product_category_name;' }
-            ],
-            correct: 'C',
-            explanation: 'Starting from products table with LEFT JOIN preserves all product categories even when sales are NULL.'
-          },
-          {
-            id: 'q7',
-            schemaId: 'yassir_delivery',
-            title: 'The Algiers Scenario: Code Review & Refactoring',
-            type: 'scenario',
-            difficulty: 'Hard',
-            question: 'Analyze the query designed to return "the order value of every Algiers user\'s 2nd completed order". Point out the logical flaws and provide a corrected SQL query.',
-            buggySql: `WITH RankedOrders AS (\n    SELECT u.user_id, o.order_id, o.order_value, o.order_status,\n    ROW_NUMBER() OVER (ORDER BY o.order_timestamp ASC) AS order_sequence\n    FROM users u JOIN orders o ON u.user_id = o.user_id\n    WHERE u.city = 'Algiers' \n)\nSELECT user_id, order_id, order_value FROM RankedOrders\nWHERE order_sequence = 2 AND order_status = 'completed';`,
-            correctSql: `WITH RankedOrders AS (\n    SELECT u.user_id, o.order_value,\n    ROW_NUMBER() OVER (\n        PARTITION BY u.user_id \n        ORDER BY o.order_timestamp ASC\n    ) AS order_sequence\n    FROM users u\n    JOIN orders o ON u.user_id = o.user_id\n    WHERE u.city = 'Algiers' \n      AND o.order_status = 'completed'\n)\nSELECT user_id, order_value\nFROM RankedOrders WHERE order_sequence = 2;`
-          },
-          {
-            id: 'q8',
-            schemaId: 'yassir_delivery',
-            title: 'Active Users without Cancelled Orders',
-            type: 'mcq',
-            difficulty: 'Medium',
-            question: 'Which query selects users who placed orders, but NEVER had a single order with order_status = "cancelled"?',
-            options: [
-              { id: 'A', text: 'SELECT user_id FROM orders WHERE order_status != "cancelled";' },
-              { id: 'B', text: 'SELECT DISTINCT user_id FROM orders WHERE user_id NOT IN (SELECT user_id FROM orders WHERE order_status = "cancelled");' },
-              { id: 'C', text: 'SELECT user_id FROM orders GROUP BY user_id HAVING order_status != "cancelled";' },
-              { id: 'D', text: 'SELECT DISTINCT user_id FROM orders WHERE order_status IS NULL;' }
-            ],
-            correct: 'B',
-            explanation: 'Option B excludes any user_id that appears in the list of users with at least one cancelled order.'
-          },
-          {
-            id: 'q9',
-            schemaId: 'fintech',
-            title: 'Wallet Balance Running Total',
-            type: 'mcq',
-            difficulty: 'Hard',
-            question: 'Which Window Function clause calculates a running total sum of transaction amounts ordered by created_at?',
-            options: [
-              { id: 'A', text: 'SUM(amount) OVER (ORDER BY created_at ASC)' },
-              { id: 'B', text: 'SUM(amount) GROUP BY created_at' },
-              { id: 'C', text: 'RUNNING_SUM(amount) OVER (ORDER BY created_at)' },
-              { id: 'D', text: 'CUMULATIVE(amount) OVER (PARTITION BY transaction_id)' }
-            ],
-            correct: 'A',
-            explanation: 'SUM() combined with OVER (ORDER BY created_at) produces an unbounded preceding running total.'
-          },
-          {
-            id: 'q10',
-            schemaId: 'yassir_delivery',
-            title: 'Driver Rating Percentile Ranking',
-            type: 'mcq',
-            difficulty: 'Medium',
-            question: 'To find the top 10% highest rated drivers per city, which window function is best suited?',
-            options: [
-              { id: 'A', text: 'DENSE_RANK() OVER (PARTITION BY city ORDER BY rating DESC)' },
-              { id: 'B', text: 'NTILE(10) OVER (PARTITION BY city ORDER BY rating DESC)' },
-              { id: 'C', text: 'ROW_NUMBER() OVER (ORDER BY rating DESC)' },
-              { id: 'D', text: 'COUNT(rating) OVER (PARTITION BY city)' }
-            ],
-            correct: 'B',
-            explanation: 'NTILE(10) splits rows into 10 equal buckets per city, where bucket 1 represents the top 10% percentile.'
+        let db = null;
+        let isFirebaseConnected = false;
+
+        if (typeof firebase !== "undefined" && firebaseConfig.apiKey && firebaseConfig.projectId) {
+          try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            isFirebaseConnected = true;
+          } catch (e) {
+            console.warn("Firebase fallback mode:", e);
           }
-        ];
+        }
+
+        const { useState, useEffect, useMemo, useRef } = React;
 
         function App() {
-          // Routes: 'candidate_entry', 'candidate_exam', 'admin_login', 'page_questions', 'page_exams', 'page_results', 'page_settings'
           const [route, setRoute] = useState('candidate_entry');
-          
-          // Toast Notification Banner
           const [toast, setToast] = useState(null);
-          const showToast = useCallback((msg, type = 'success') => {
+
+          const showToast = (msg, type = 'success') => {
             setToast({ msg, type });
             setTimeout(() => setToast(null), 3500);
-          }, []);
+          };
 
-          // Admin Authentication
           const [adminAuth, setAdminAuth] = useState({ 
             id: 'admin', 
             password: '', 
             isAuthenticated: false, 
             error: '', 
-            name: 'Interviewer Admin', 
-            role: 'Lead Data Analytics Evaluator' 
+            name: 'Interviewer Admin'
           });
 
-          // Repositories in LocalStorage
-          const [questionBank, setQuestionBank] = useState(() => {
-            const saved = localStorage.getItem('yassir_qbank');
-            return saved ? JSON.parse(saved) : INITIAL_QUESTION_BANK;
-          });
-
-          const [exams, setExams] = useState(() => {
-            const saved = localStorage.getItem('yassir_exams');
-            return saved ? JSON.parse(saved) : [
-              {
-                id: 'exam-001',
-                title: 'Yassir Product Data Analyst Technical Screen',
-                passScore: 70,
-                timeLimitMinutes: 20,
-                questionIds: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'],
-                accessCode: 'YASSIR-2026',
-                createdAt: new Date().toISOString()
-              },
-              {
-                id: 'exam-002',
-                title: 'Data Engineering & Window Functions Screen',
-                passScore: 80,
-                timeLimitMinutes: 25,
-                questionIds: ['q2', 'q3', 'q6', 'q7', 'q9', 'q10'],
-                accessCode: 'DE-SQL-88',
-                createdAt: new Date().toISOString()
-              }
-            ];
-          });
-
+          // Modular Data State
+          const [schemas, setSchemas] = useState({});
+          const [questionBank, setQuestionBank] = useState([]);
+          const [exams, setExams] = useState([]);
           const [submissions, setSubmissions] = useState(() => {
             const saved = localStorage.getItem('yassir_submissions');
             return saved ? JSON.parse(saved) : [];
           });
+          const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+          useEffect(() => {
+            const loadModularData = async () => {
+              try {
+                const qRes = await fetch('data/questions.json');
+                if (qRes.ok) {
+                  const qData = await qRes.json();
+                  setQuestionBank(qData.questions || []);
+                  setSchemas(qData.schemas || {});
+                }
+
+                const eRes = await fetch('data/exams.json');
+                if (eRes.ok) {
+                  const eData = await eRes.json();
+                  setExams(eData.exams || []);
+                }
+              } catch (err) {
+                console.warn("Could not load modular JSON files, falling back to local state:", err);
+              } finally {
+                setIsDataLoaded(true);
+              }
+            };
+
+            loadModularData();
+          }, []);
 
           // Active Candidate Exam Session State
           const [activeExamId, setActiveExamId] = useState('exam-001');
           const [candidateInfo, setCandidateInfo] = useState({ name: '', email: '', examCode: 'YASSIR-2026' });
-          const [candidateSlide, setCandidateSlide] = useState(0); // 0 = entry, 1..N = Qs, N+1 = submitted
+          const [candidateSlide, setCandidateSlide] = useState(0);
           const [candidateAnswers, setCandidateAnswers] = useState({});
           const [candidateTextAnswers, setCandidateTextAnswers] = useState({});
           const [startTime, setStartTime] = useState(null);
           const [elapsedSeconds, setElapsedSeconds] = useState(0);
           const [tabSwitchCount, setTabSwitchCount] = useState(0);
 
-          // Inspection Modal State
+          // Modals & Editing Forms
           const [selectedSubmission, setSelectedSubmission] = useState(null);
-
-          // Admin Add/Edit Question Modal State
-          const [editingQuestion, setEditingQuestion] = useState(null);
-
-          const [newQuestionForm, setNewQuestionForm] = useState({
-            title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
-            options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
-            correct: 'A', explanation: ''
-          });
-
-          // Admin Create/Edit Exam Form State
           const [editingExamId, setEditingExamId] = useState(null);
-          const [newExamForm, setNewExamForm] = useState({
-            title: 'Senior Data Analytics SQL Challenge',
-            timeLimitMinutes: 20,
-            passScore: 70,
-            selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
-          });
 
-          // Compute active exam & question details BEFORE hooks
           const activeExam = useMemo(() => {
             return exams.find(e => e.id === activeExamId) || exams[0];
           }, [exams, activeExamId]);
@@ -326,40 +132,37 @@
             return activeExam.questionIds.map(qid => questionBank.find(q => q.id === qid)).filter(Boolean);
           }, [activeExam, questionBank]);
 
-          // Sync storage
-          useEffect(() => { localStorage.setItem('yassir_qbank', JSON.stringify(questionBank)); }, [questionBank]);
-          useEffect(() => { localStorage.setItem('yassir_exams', JSON.stringify(exams)); }, [exams]);
-          useEffect(() => { localStorage.setItem('yassir_submissions', JSON.stringify(submissions)); }, [submissions]);
-
-          // ANTI-CHEATING PROTECTION LISTENERS DURING ACTIVE EXAM
           useEffect(() => {
-            const totalQuestions = activeQuestions ? activeQuestions.length : 0;
-            if (route !== 'candidate_exam' || candidateSlide < 1 || candidateSlide > totalQuestions) return;
+            if (!isFirebaseConnected || !db) return;
+            const unsubscribe = db.collection("candidate_submissions")
+              .orderBy("submittedAt", "desc")
+              .onSnapshot((snapshot) => {
+                const cloudSubmissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (cloudSubmissions.length > 0) setSubmissions(cloudSubmissions);
+              }, (err) => console.log("Firebase sync fallback:", err));
+
+            return () => unsubscribe();
+          }, []);
+
+          useEffect(() => {
+            localStorage.setItem('yassir_submissions', JSON.stringify(submissions));
+          }, [submissions]);
+
+          useEffect(() => {
+            const totalQs = activeQuestions?.length || 0;
+            if (route !== 'candidate_exam' || candidateSlide < 1 || candidateSlide > totalQs) return;
 
             const handlePreventCopy = (e) => {
               e.preventDefault();
               showToast("Copying content is disabled during the exam!", "error");
             };
-
-            const handlePreventContextMenu = (e) => {
-              e.preventDefault();
-            };
-
-            const handleKeyDown = (e) => {
-              if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.key === 'u' || e.key === 'U' || e.key === 's' || e.key === 'S')) {
-                e.preventDefault();
-                showToast("Keyboard shortcuts disabled during exam!", "error");
-              }
-              if (e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j'))) {
-                e.preventDefault();
-              }
-            };
+            const handlePreventContextMenu = (e) => { e.preventDefault(); };
 
             const handleVisibilityChange = () => {
               if (document.hidden) {
                 setTabSwitchCount(prev => {
                   const newCount = prev + 1;
-                  showToast(`Warning: Screen/Tab switch detected! (${newCount} times)`, "error");
+                  showToast(`Screen/Tab switch detected! (${newCount})`, "error");
                   return newCount;
                 });
               }
@@ -368,78 +171,35 @@
             window.addEventListener('copy', handlePreventCopy);
             window.addEventListener('cut', handlePreventCopy);
             window.addEventListener('contextmenu', handlePreventContextMenu);
-            window.addEventListener('keydown', handleKeyDown);
             document.addEventListener('visibilitychange', handleVisibilityChange);
 
             return () => {
               window.removeEventListener('copy', handlePreventCopy);
               window.removeEventListener('cut', handlePreventCopy);
               window.removeEventListener('contextmenu', handlePreventContextMenu);
-              window.removeEventListener('keydown', handleKeyDown);
               document.removeEventListener('visibilitychange', handleVisibilityChange);
             };
-          }, [route, candidateSlide, activeQuestions, showToast]);
+          }, [route, candidateSlide, activeQuestions?.length]);
 
-          // Keep ref of adminAuth to avoid stale closures in hashchange listener
-          const adminAuthRef = useRef(adminAuth);
-          useEffect(() => { adminAuthRef.current = adminAuth; }, [adminAuth]);
-
-          // Handle Hash Link Navigation (e.g. #exam=YASSIR-2026 or #questions)
-          useEffect(() => {
-            const parseHash = () => {
-              const hash = window.location.hash.replace('#', '');
-              if (hash.startsWith('exam=')) {
-                const code = hash.split('=')[1];
-                const foundExam = exams.find(e => e.accessCode.toLowerCase() === code.toLowerCase());
-                if (foundExam) {
-                  setActiveExamId(foundExam.id);
-                  setCandidateInfo(prev => ({ ...prev, examCode: foundExam.accessCode }));
-                  setRoute('candidate_entry');
-                }
-              } else if (['questions', 'exams', 'results', 'settings'].includes(hash)) {
-                if (adminAuthRef.current.isAuthenticated) {
-                  setRoute(`page_${hash}`);
-                } else {
-                  setRoute('admin_login');
-                }
-              } else if (hash === 'admin') {
-                if (adminAuthRef.current.isAuthenticated) {
-                  setRoute('page_results');
-                  window.location.hash = 'results';
-                } else {
-                  setRoute('admin_login');
-                }
-              } else if (hash === 'candidate') {
-                setRoute('candidate_entry');
-              }
-            };
-
-            parseHash();
-            window.addEventListener('hashchange', parseHash);
-            return () => window.removeEventListener('hashchange', parseHash);
-          }, [exams]);
-
-          // Timer
           useEffect(() => {
             let timer;
-            const totalQuestions = activeQuestions ? activeQuestions.length : 0;
-            if (startTime && route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= totalQuestions) {
+            const totalQs = activeQuestions?.length || 0;
+            if (startTime && route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= totalQs) {
               timer = setInterval(() => {
                 setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
               }, 1000);
             }
             return () => clearInterval(timer);
-          }, [startTime, route, candidateSlide, activeQuestions]);
+          }, [startTime, route, candidateSlide, activeQuestions?.length]);
 
           const handleAdminLogin = (e) => {
             e.preventDefault();
             if (adminAuth.id.trim() === 'admin' && adminAuth.password === 'yassir2026!') {
               setAdminAuth({ ...adminAuth, isAuthenticated: true, error: '' });
               setRoute('page_results');
-              window.location.hash = 'results';
-              showToast("Admin session unlocked successfully!");
+              showToast("Admin authenticated.");
             } else {
-              setAdminAuth({ ...adminAuth, error: 'Invalid Admin Credentials.' });
+              setAdminAuth({ ...adminAuth, error: 'Invalid ID or Password.' });
             }
           };
 
@@ -447,7 +207,7 @@
             e.preventDefault();
             const matchedExam = exams.find(ex => ex.accessCode.trim().toLowerCase() === candidateInfo.examCode.trim().toLowerCase());
             if (!matchedExam) {
-              showToast("Invalid Exam Access Code. Please check with interviewer.", "error");
+              showToast("Invalid Access Code. Check with interviewer.", "error");
               return;
             }
             setActiveExamId(matchedExam.id);
@@ -456,18 +216,7 @@
             setRoute('candidate_exam');
           };
 
-          const handleSelectOption = (questionId, optionId) => {
-            setCandidateAnswers(prev => ({ ...prev, [questionId]: optionId }));
-          };
-
-          const handleTextAnswer = (questionId, field, value) => {
-            setCandidateTextAnswers(prev => ({
-              ...prev,
-              [questionId]: { ...prev[questionId], [field]: value }
-            }));
-          };
-
-          const calculateCandidateScore = () => {
+          const handleSubmitExam = async () => {
             let score = 0;
             let mcqTotal = 0;
             (activeQuestions || []).forEach(q => {
@@ -476,17 +225,13 @@
                 if (candidateAnswers[q.id] === q.correct) score += 1;
               }
             });
-            return { score, mcqTotal };
-          };
 
-          const handleSubmitExam = () => {
-            const { score, mcqTotal } = calculateCandidateScore();
             const submissionData = {
               id: `sub-${Date.now()}`,
               candidateName: candidateInfo.name,
               candidateEmail: candidateInfo.email,
               examId: activeExamId,
-              examTitle: activeExam ? activeExam.title : 'Standard Assessment',
+              examTitle: activeExam?.title || 'Assessment',
               mcqAnswers: candidateAnswers,
               textAnswers: candidateTextAnswers,
               mcqScore: score,
@@ -497,98 +242,39 @@
               submittedAt: new Date().toLocaleString()
             };
 
+            if (isFirebaseConnected && db) {
+              try { await db.collection("candidate_submissions").add(submissionData); }
+              catch (err) { console.error(err); }
+            }
+
             setSubmissions(prev => [submissionData, ...prev]);
-            setCandidateSlide((activeQuestions ? activeQuestions.length : 0) + 1);
-            showToast("Exam submitted successfully! Results saved.");
+            setCandidateSlide((activeQuestions?.length || 0) + 1);
+            showToast("Exam submitted successfully!");
           };
 
-          const handleSaveExam = (e) => {
-            e.preventDefault();
-            if (newExamForm.selectedQuestionIds.length === 0) {
-              showToast("Select at least one question for the exam template.", "error");
-              return;
-            }
+          const exportJSONFile = (data, filename) => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`Exported ${filename}`);
+          };
 
-            if (editingExamId) {
-              setExams(prev => prev.map(ex => ex.id === editingExamId ? {
-                ...ex,
-                title: newExamForm.title,
-                timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
-                passScore: parseInt(newExamForm.passScore || 70),
-                questionIds: newExamForm.selectedQuestionIds
-              } : ex));
-              showToast(`Exam Template '${newExamForm.title}' updated!`);
-              setEditingExamId(null);
-            } else {
-              const accessCode = `YASSIR-${Math.floor(1000 + Math.random() * 9000)}`;
-              const created = {
-                id: `exam-${Date.now()}`,
-                title: newExamForm.title,
-                timeLimitMinutes: parseInt(newExamForm.timeLimitMinutes),
-                passScore: parseInt(newExamForm.passScore || 70),
-                questionIds: newExamForm.selectedQuestionIds,
-                accessCode: accessCode,
-                createdAt: new Date().toISOString()
-              };
-              setExams(prev => [created, ...prev]);
-              showToast(`Exam Template '${created.title}' created! Code: ${accessCode}`);
-            }
-
-            setNewExamForm({
-              title: 'Senior Data Analytics SQL Challenge',
-              timeLimitMinutes: 20,
-              passScore: 70,
-              selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
+          const exportResultsCSV = () => {
+            let csv = "Candidate Name,Candidate Email,Exam Title,MCQ Score,MCQ Total,Percentage,Time Spent (s),Tab Switches,Submitted At\n";
+            submissions.forEach(s => {
+              csv += `"${s.candidateName}","${s.candidateEmail}","${s.examTitle}",${s.mcqScore},${s.mcqTotal},${s.percentage}%,${s.timeTakenSeconds},${s.tabSwitches},"${s.submittedAt}"\n`;
             });
-          };
-
-          const handleEditExamClick = (ex) => {
-            setEditingExamId(ex.id);
-            setNewExamForm({
-              title: ex.title,
-              timeLimitMinutes: ex.timeLimitMinutes,
-              passScore: ex.passScore || 70,
-              selectedQuestionIds: ex.questionIds
-            });
-            showToast(`Editing exam '${ex.title}'`);
-          };
-
-          const handleDeleteExam = (examId) => {
-            if (exams.length <= 1) {
-              showToast("At least one exam template must remain active.", "error");
-              return;
-            }
-            setExams(prev => prev.filter(ex => ex.id !== examId));
-            showToast("Exam template deleted.", "error");
-          };
-
-          const handleSaveQuestion = (e) => {
-            e.preventDefault();
-            if (editingQuestion && editingQuestion.id) {
-              setQuestionBank(prev => prev.map(q => q.id === editingQuestion.id ? { ...newQuestionForm, id: q.id } : q));
-              showToast("Question updated successfully!");
-            } else {
-              const created = { ...newQuestionForm, id: `custom-q-${Date.now()}` };
-              setQuestionBank(prev => [created, ...prev]);
-              showToast("New Question added to Question Repository!");
-            }
-            setEditingQuestion(null);
-            setNewQuestionForm({
-              title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
-              options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
-              correct: 'A', explanation: ''
-            });
-          };
-
-          const handleDeleteQuestion = (qid) => {
-            setQuestionBank(prev => prev.filter(q => q.id !== qid));
-            showToast("Question deleted from Bank.", "error");
-          };
-
-          const copyExamLink = (accessCode) => {
-            const link = `${window.location.origin}${window.location.pathname}#exam=${accessCode}`;
-            navigator.clipboard.writeText(link);
-            showToast(`Direct Exam Link copied to clipboard!\n${link}`);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `candidate_results_${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
           };
 
           const formatTime = (secs) => {
@@ -597,14 +283,14 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
           };
 
-          const totalActiveQ = activeQuestions ? activeQuestions.length : 0;
+          const totalQs = activeQuestions?.length || 0;
 
           return (
             <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden">
               
               {/* TOAST BANNER */}
               {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-2xl font-semibold text-xs flex items-center space-x-2 border transition-all animate-bounce ${
+                <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-2xl font-semibold text-xs flex items-center space-x-2 border transition-all ${
                   toast.type === 'error' ? 'bg-red-950 border-red-800 text-red-200' : 'bg-emerald-950 border-emerald-800 text-emerald-200'
                 }`}>
                   <i className={`fa-solid ${toast.type === 'error' ? 'fa-circle-exclamation text-red-400' : 'fa-circle-check text-emerald-400'}`}></i>
@@ -612,7 +298,7 @@
                 </div>
               )}
 
-              {/* TOP APPLICATION HEADER WITH NAVIGATION */}
+              {}
               <header className="h-16 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
                 <div className="flex items-center space-x-3">
                   <div className="bg-sky-500 text-slate-950 font-black tracking-widest text-lg px-2.5 py-0.5 rounded shadow-lg shadow-sky-500/20">
@@ -620,11 +306,13 @@
                   </div>
                   <div className="flex flex-col">
                     <span className="text-white text-sm font-bold">Data Analytics Technical Assessment</span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Modular Setup • GitHub Hosted
+                    </span>
                   </div>
                 </div>
 
-                {/* Candidate Active Timer & Anti-Cheat Counter */}
-                {route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= totalActiveQ && (
+                {route === 'candidate_exam' && candidateSlide >= 1 && candidateSlide <= totalQs && (
                   <div className="flex items-center space-x-3">
                     {tabSwitchCount > 0 && (
                       <div className="flex items-center space-x-1.5 bg-red-950/80 px-3 py-1.5 rounded-full border border-red-800 text-red-400 font-mono text-xs font-semibold animate-pulse">
@@ -639,128 +327,27 @@
                   </div>
                 )}
 
-                {/* NAVIGATION TABS */}
+                {/* NAVIGATION BAR */}
                 {adminAuth.isAuthenticated ? (
-                  <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs overflow-x-auto max-w-full">
-                    
-                    {/* Candidate Entrance */}
-                    <button
-                      onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
-                        route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-pen-to-square"></i>
-                      <span>Candidate View</span>
-                    </button>
-
-                    <div className="h-4 w-px bg-slate-800 mx-1 shrink-0"></div>
-
-                    {/* Admin Page 1: Question Repository */}
-                    <button
-                      onClick={() => { setRoute('page_questions'); window.location.hash = 'questions'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
-                        route === 'page_questions' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-database"></i>
-                      <span>Questions ({questionBank.length})</span>
-                    </button>
-
-                    {/* Admin Page 2: Exam Templates */}
-                    <button
-                      onClick={() => { setRoute('page_exams'); window.location.hash = 'exams'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
-                        route === 'page_exams' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-layer-group"></i>
-                      <span>Exams ({exams.length})</span>
-                    </button>
-
-                    {/* Admin Page 3: Candidate Results */}
-                    <button
-                      onClick={() => { setRoute('page_results'); window.location.hash = 'results'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
-                        route === 'page_results' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-square-poll-vertical"></i>
-                      <span>Results ({submissions.length})</span>
-                    </button>
-
-                    {/* Admin Page 4: Admin Profile & Settings */}
-                    <button
-                      onClick={() => { setRoute('page_settings'); window.location.hash = 'settings'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 shrink-0 ${
-                        route === 'page_settings' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-user-shield"></i>
-                      <span>Admin</span>
-                    </button>
-
-                    {/* Admin Log Out Button */}
-                    <button
-                      onClick={() => {
-                        setAdminAuth(prev => ({ ...prev, isAuthenticated: false }));
-                        setRoute('candidate_entry');
-                        window.location.hash = 'candidate';
-                        showToast("Admin session logged out.");
-                      }}
-                      className="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg font-bold transition-all flex items-center space-x-1 text-xs shrink-0"
-                      title="Log Out Admin"
-                    >
-                      <i className="fa-solid fa-right-from-bracket"></i>
-                      <span>Log Out</span>
-                    </button>
-
+                  <div className="flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button onClick={() => setRoute('candidate_entry')} className={`px-3 py-1.5 rounded-lg font-bold transition-all ${route.startsWith('candidate') ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Candidate View</button>
+                    <button onClick={() => setRoute('page_questions')} className={`px-3 py-1.5 rounded-lg font-bold transition-all ${route === 'page_questions' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Questions ({questionBank.length})</button>
+                    <button onClick={() => setRoute('page_exams')} className={`px-3 py-1.5 rounded-lg font-bold transition-all ${route === 'page_exams' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Exams ({exams.length})</button>
+                    <button onClick={() => setRoute('page_results')} className={`px-3 py-1.5 rounded-lg font-bold transition-all ${route === 'page_results' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Results ({submissions.length})</button>
+                    <button onClick={() => { setAdminAuth(prev => ({ ...prev, isAuthenticated: false })); setRoute('candidate_entry'); }} className="px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg font-bold text-xs">Log Out</button>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                    <button
-                      onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                        route.startsWith('candidate') ? 'bg-sky-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-pen-to-square"></i>
-                      <span>Candidate View</span>
-                    </button>
-
-                    <button
-                      onClick={() => { setRoute('admin_login'); window.location.hash = 'admin'; }}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 ${
-                        route === 'admin_login' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <i className="fa-solid fa-lock text-amber-400"></i>
-                      <span>Admin Portal</span>
-                    </button>
+                    <button onClick={() => setRoute('candidate_entry')} className={`px-3 py-1.5 rounded-lg font-bold ${route.startsWith('candidate') ? 'bg-sky-500 text-slate-950' : 'text-slate-400'}`}>Candidate View</button>
+                    <button onClick={() => setRoute('admin_login')} className={`px-3 py-1.5 rounded-lg font-bold ${route === 'admin_login' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}><i className="fa-solid fa-lock text-amber-400 mr-1"></i>Admin Portal</button>
                   </div>
                 )}
               </header>
 
+              {}
               <main className="flex-1 p-6 flex items-center justify-center relative">
 
-                {/* ROUTE GUARD FOR UNAUTHENTICATED ADMIN PAGES */}
-                {route.startsWith('page_') && !adminAuth.isAuthenticated && (
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-4 text-center">
-                    <div className="w-12 h-12 bg-amber-500/10 text-amber-400 border border-amber-800 rounded-full flex items-center justify-center mx-auto text-xl">
-                      <i className="fa-solid fa-lock"></i>
-                    </div>
-                    <h3 className="text-lg font-bold text-white">Admin Authentication Required</h3>
-                    <p className="text-xs text-slate-400">You must log in with Admin credentials to access question management, exam templates, and candidate results.</p>
-                    <button
-                      onClick={() => setRoute('admin_login')}
-                      className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition-all"
-                    >
-                      Go to Admin Login
-                    </button>
-                  </div>
-                )}
-
-                {/* VIEW 1: CANDIDATE REGISTRATION ENTRY PAGE */}
+                {/* VIEW 1: CANDIDATE REGISTRATION */}
                 {route === 'candidate_entry' && (
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-6">
                     <div className="space-y-1">
@@ -769,52 +356,23 @@
                         <span>CANDIDATE EXAM PORTAL</span>
                       </div>
                       <h1 className="text-2xl font-bold text-white">Start Candidate Session</h1>
-                      <p className="text-xs text-slate-400">
-                        Enter your candidate profile and the access code given by your interviewer.
-                      </p>
+                      <p className="text-xs text-slate-400">Enter your credentials and the access code from your interviewer.</p>
                     </div>
 
                     <form onSubmit={handleStartExam} className="space-y-4 text-xs">
                       <div>
                         <label className="block text-slate-300 font-semibold mb-1">Full Name</label>
-                        <input
-                          type="text"
-                          required
-                          value={candidateInfo.name}
-                          onChange={e => setCandidateInfo({ ...candidateInfo, name: e.target.value })}
-                          placeholder="e.g. Sarah Mansouri"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                        />
+                        <input type="text" required value={candidateInfo.name} onChange={e => setCandidateInfo({ ...candidateInfo, name: e.target.value })} placeholder="e.g. Sarah Mansouri" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500" />
                       </div>
-
                       <div>
                         <label className="block text-slate-300 font-semibold mb-1">Email Address</label>
-                        <input
-                          type="email"
-                          required
-                          value={candidateInfo.email}
-                          onChange={e => setCandidateInfo({ ...candidateInfo, email: e.target.value })}
-                          placeholder="sarah@example.com"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                        />
+                        <input type="email" required value={candidateInfo.email} onChange={e => setCandidateInfo({ ...candidateInfo, email: e.target.value })} placeholder="sarah@example.com" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500" />
                       </div>
-
                       <div>
                         <label className="block text-slate-300 font-semibold mb-1">Exam Access Code</label>
-                        <input
-                          type="text"
-                          required
-                          value={candidateInfo.examCode}
-                          onChange={e => setCandidateInfo({ ...candidateInfo, examCode: e.target.value })}
-                          placeholder="e.g. YASSIR-2026"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sky-400 font-mono font-bold focus:outline-none focus:border-sky-500 uppercase"
-                        />
+                        <input type="text" required value={candidateInfo.examCode} onChange={e => setCandidateInfo({ ...candidateInfo, examCode: e.target.value })} placeholder="e.g. YASSIR-2026" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sky-400 font-mono font-bold uppercase focus:outline-none focus:border-sky-500" />
                       </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-lg transition-all flex items-center justify-center space-x-2 shadow-lg shadow-sky-500/20"
-                      >
+                      <button type="submit" className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-lg transition-all flex items-center justify-center space-x-2 shadow-lg shadow-sky-500/20">
                         <span>Launch Assessment</span>
                         <i className="fa-solid fa-arrow-right"></i>
                       </button>
@@ -822,28 +380,26 @@
                   </div>
                 )}
 
-                {/* VIEW 2: CANDIDATE LANDSCAPE EXAM PLAYER */}
+                {/* VIEW 2: CANDIDATE EXAM PLAYER */}
                 {route === 'candidate_exam' && (
                   <div className="w-full max-w-6xl flex flex-col space-y-4 select-none">
-                    
-                    {candidateSlide >= 1 && candidateSlide <= totalActiveQ && (
+                    {candidateSlide >= 1 && candidateSlide <= totalQs && (
                       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col justify-between min-h-[500px]">
                         {(() => {
                           const currentQ = activeQuestions[candidateSlide - 1];
                           if (!currentQ) return null;
-                          const schema = SCHEMAS[currentQ.schemaId] || SCHEMAS.olist;
+                          const schema = schemas[currentQ.schemaId] || Object.values(schemas)[0] || { name: 'Standard Schema', tables: [] };
                           const selectedOption = candidateAnswers[currentQ.id];
                           const textAns = candidateTextAnswers[currentQ.id] || { flawsText: '', sqlText: '' };
 
                           return (
                             <div className="grid grid-cols-12 gap-6 flex-1">
-                              
-                              {/* LEFT PANEL: QUESTION + PERMANENT SCHEMA DRAWER */}
+                              {/* LEFT PANEL */}
                               <div className="col-span-5 border-r border-slate-800 pr-5 flex flex-col justify-between space-y-4">
                                 <div className="space-y-3">
                                   <div className="flex justify-between items-center">
                                     <span className="text-xs font-mono font-bold text-sky-400 bg-sky-950 border border-sky-800 px-3 py-0.5 rounded-full">
-                                      Question {candidateSlide} / {totalActiveQ}
+                                      Question {candidateSlide} / {totalQs}
                                     </span>
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
                                       currentQ.difficulty === 'Easy' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
@@ -853,53 +409,34 @@
                                       {currentQ.difficulty}
                                     </span>
                                   </div>
-
-                                  <h2 className="text-base font-bold text-slate-100 leading-snug">
-                                    {currentQ.question}
-                                  </h2>
+                                  <h2 className="text-base font-bold text-slate-100 leading-snug">{currentQ.question}</h2>
                                 </div>
 
-                                {/* PERMANENT SCHEMA TABLE DRAWER */}
+                                {/* SCHEMA DRAWER */}
                                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 overflow-y-auto max-h-56 text-xs font-mono">
                                   <span className="text-amber-400 font-bold block border-b border-slate-800 pb-1 flex items-center gap-1.5">
                                     <i className="fa-solid fa-database"></i>
                                     <span>Schema: {schema.name}</span>
                                   </span>
-
-                                  {schema.tables.map((t, idx) => (
+                                  {schema.tables?.map((t, idx) => (
                                     <div key={idx} className="space-y-0.5">
                                       <span className="text-sky-400 font-bold block text-[11px]">// {t.name}</span>
-                                      <div className="pl-2 text-slate-300 text-[10px]">
-                                        {t.cols.join(' • ')}
-                                      </div>
+                                      <div className="pl-2 text-slate-300 text-[10px]">{t.cols.join(' • ')}</div>
                                     </div>
                                   ))}
                                 </div>
-
                               </div>
 
-                              {/* RIGHT PANEL: INTERACTIVE ANSWER INPUT */}
+                              {/* RIGHT PANEL */}
                               <div className="col-span-7 flex flex-col justify-between pl-1">
-                                {currentQ.type === 'mcq' && (
+                                {currentQ.type === 'mcq' && currentQ.options && (
                                   <div className="space-y-3 my-auto">
                                     {currentQ.options.map((opt) => {
                                       const isSelected = selectedOption === opt.id;
                                       return (
-                                        <div
-                                          key={opt.id}
-                                          onClick={() => handleSelectOption(currentQ.id, opt.id)}
-                                          className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                                            isSelected
-                                              ? 'bg-sky-500/10 border-sky-500 text-sky-200 ring-1 ring-sky-500'
-                                              : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-950'
-                                          }`}
-                                        >
-                                          <span className="text-xs font-mono leading-normal pr-2">{opt.text}</span>
-                                          <div className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center text-xs font-bold ${
-                                            isSelected ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-slate-700 text-slate-500'
-                                          }`}>
-                                            {opt.id}
-                                          </div>
+                                        <div key={opt.id} onClick={() => setCandidateAnswers(prev => ({ ...prev, [currentQ.id]: opt.id }))} className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${isSelected ? 'bg-sky-500/10 border-sky-500 text-sky-200 ring-1 ring-sky-500' : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'}`}>
+                                          <span className="text-xs font-mono pr-2">{opt.text}</span>
+                                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold ${isSelected ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-slate-700 text-slate-500'}`}>{opt.id}</div>
                                         </div>
                                       );
                                     })}
@@ -907,736 +444,129 @@
                                 )}
 
                                 {currentQ.type === 'scenario' && (
-                                  <div className="space-y-3 my-auto">
+                                  <div className="space-y-3 my-auto text-xs">
                                     <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] text-sky-300 max-h-36 overflow-y-auto">
-                                      <span className="text-slate-500 block text-[10px] font-sans mb-1">// Candidate Code Review Prompt:</span>
                                       <pre>{currentQ.buggySql}</pre>
                                     </div>
-
                                     <div>
-                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                                        1. Logical Bugs / Flaws Analysis:
-                                      </label>
-                                      <textarea
-                                        rows={2}
-                                        value={textAns.flawsText}
-                                        onChange={e => handleTextAnswer(currentQ.id, 'flawsText', e.target.value)}
-                                        placeholder="Explain missing PARTITION BY, misplaced WHERE order_status filter..."
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
-                                      />
+                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">1. Logical Bugs Analysis:</label>
+                                      <textarea rows={2} value={textAns.flawsText} onChange={e => setCandidateTextAnswers(prev => ({ ...prev, [currentQ.id]: { ...prev[currentQ.id], flawsText: e.target.value } }))} placeholder="Explain flaws..." className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-sky-500" />
                                     </div>
-
                                     <div>
-                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                                        2. Refactored SQL Query Solution:
-                                      </label>
-                                      <textarea
-                                        rows={3}
-                                        value={textAns.sqlText}
-                                        onChange={e => handleTextAnswer(currentQ.id, 'sqlText', e.target.value)}
-                                        placeholder="WITH RankedOrders AS ( ... )"
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-mono text-xs text-sky-300 focus:outline-none focus:border-sky-500"
-                                      />
+                                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">2. Refactored SQL Query:</label>
+                                      <textarea rows={3} value={textAns.sqlText} onChange={e => setCandidateTextAnswers(prev => ({ ...prev, [currentQ.id]: { ...prev[currentQ.id], sqlText: e.target.value } }))} placeholder="WITH RankedOrders AS ( ... )" className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-mono text-sky-300 focus:outline-none focus:border-sky-500" />
                                     </div>
                                   </div>
                                 )}
                               </div>
-
                             </div>
                           );
                         })()}
                       </div>
                     )}
 
-                    {/* Completion Screen */}
-                    {candidateSlide > totalActiveQ && (
+                    {candidateSlide > totalQs && (
                       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center max-w-lg mx-auto shadow-2xl space-y-4">
                         <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-2xl">
                           <i className="fa-solid fa-circle-check"></i>
                         </div>
                         <h2 className="text-2xl font-bold text-white">Assessment Complete!</h2>
-                        <p className="text-slate-400 text-xs">
-                          Thank you <span className="text-sky-400 font-bold">{candidateInfo.name}</span>. Your choices and SQL responses have been recorded in the database.
-                        </p>
-                        <button
-                          onClick={() => {
-                            setRoute('candidate_entry');
-                            setCandidateSlide(0);
-                            setCandidateAnswers({});
-                            setCandidateTextAnswers({});
-                          }}
-                          className="mt-4 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-all"
-                        >
-                          Return to Entry Screen
-                        </button>
+                        <p className="text-slate-400 text-xs">Thank you <span className="text-sky-400 font-bold">{candidateInfo.name}</span>. Your response has been recorded.</p>
                       </div>
                     )}
 
-                    {/* Bottom Navigation Controls Bar */}
-                    {candidateSlide >= 1 && candidateSlide <= totalActiveQ && (
-                      <div className="flex justify-between items-center bg-slate-900/90 border border-slate-800 p-3 rounded-xl backdrop-blur-sm">
-                        <button
-                          onClick={() => setCandidateSlide(prev => Math.max(1, prev - 1))}
-                          disabled={candidateSlide === 1}
-                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold rounded-lg text-slate-300 flex items-center space-x-1"
-                        >
-                          <i className="fa-solid fa-chevron-left"></i>
-                          <span>Previous</span>
-                        </button>
-
-                        <div className="flex items-center space-x-1.5">
-                          {(activeQuestions || []).map((_, idx) => (
-                            <div
-                              key={idx}
-                              onClick={() => setCandidateSlide(idx + 1)}
-                              className={`h-2 rounded-full cursor-pointer transition-all ${
-                                candidateSlide === idx + 1 ? 'w-6 bg-sky-500' : 'w-2 bg-slate-700 hover:bg-slate-600'
-                              }`}
-                            />
-                          ))}
-                        </div>
-
-                        {candidateSlide < totalActiveQ ? (
-                          <button
-                            onClick={() => setCandidateSlide(prev => prev + 1)}
-                            className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg flex items-center space-x-1"
-                          >
-                            <span>Next Question</span>
-                            <i className="fa-solid fa-chevron-right"></i>
-                          </button>
+                    {candidateSlide >= 1 && candidateSlide <= totalQs && (
+                      <div className="flex justify-between items-center bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+                        <button onClick={() => setCandidateSlide(prev => Math.max(1, prev - 1))} disabled={candidateSlide === 1} className="px-4 py-2 bg-slate-800 disabled:opacity-30 text-xs font-bold rounded-lg text-slate-300">Previous</button>
+                        {candidateSlide < totalQs ? (
+                          <button onClick={() => setCandidateSlide(prev => prev + 1)} className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg">Next Question</button>
                         ) : (
-                          <button
-                            onClick={handleSubmitExam}
-                            className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg flex items-center space-x-1"
-                          >
-                            <i className="fa-solid fa-paper-plane"></i>
-                            <span>Submit Exam</span>
-                          </button>
+                          <button onClick={handleSubmitExam} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg">Submit Exam</button>
                         )}
                       </div>
                     )}
-
                   </div>
                 )}
 
-                {/* VIEW 3: ADMIN LOGIN PAGE */}
+                {/* VIEW 3: ADMIN LOGIN */}
                 {route === 'admin_login' && (
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-5">
-                    <div className="flex items-center space-x-3 text-amber-400 border-b border-slate-800 pb-3">
-                      <i className="fa-solid fa-lock text-xl"></i>
-                      <h2 className="text-xl font-bold text-white">Admin Authentication</h2>
-                    </div>
-
-                    <p className="text-xs text-slate-400">
-                      Sign in to view candidate result matrices, manage question banks, and generate custom technical screens.
-                    </p>
-
-                    {adminAuth.error && (
-                      <div className="p-3 bg-red-950/80 border border-red-800 rounded-lg text-xs text-red-300 flex items-center gap-2">
-                        <i className="fa-solid fa-triangle-exclamation"></i>
-                        <span>{adminAuth.error}</span>
-                      </div>
-                    )}
-
-                    <form onSubmit={handleAdminLogin} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Admin ID</label>
-                        <input
-                          type="text"
-                          required
-                          value={adminAuth.id}
-                          onChange={e => setAdminAuth({ ...adminAuth, id: e.target.value })}
-                          placeholder="admin"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
-                        <input
-                          type="password"
-                          required
-                          value={adminAuth.password}
-                          onChange={e => setAdminAuth({ ...adminAuth, password: e.target.value })}
-                          placeholder="••••••••"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center space-x-2"
-                      >
-                        <span>Unlock Admin Workspace</span>
-                        <i className="fa-solid fa-key"></i>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => { setRoute('candidate_entry'); window.location.hash = 'candidate'; }}
-                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-xs transition-all flex items-center justify-center space-x-1.5 border border-slate-700"
-                      >
-                        <i className="fa-solid fa-arrow-left"></i>
-                        <span>Back to Candidate Portal</span>
-                      </button>
+                    <h2 className="text-xl font-bold text-white border-b border-slate-800 pb-3">Admin Login</h2>
+                    {adminAuth.error && <div className="text-xs text-red-400">{adminAuth.error}</div>}
+                    <form onSubmit={handleAdminLogin} className="space-y-4 text-xs">
+                      <input type="text" value={adminAuth.id} onChange={e => setAdminAuth({ ...adminAuth, id: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white" />
+                      <input type="password" value={adminAuth.password} onChange={e => setAdminAuth({ ...adminAuth, password: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white" />
+                      <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded">Unlock Workspace</button>
                     </form>
                   </div>
                 )}
 
-                {/* PAGE 1: QUESTION REPOSITORY PAGE */}
+                {/* PAGE: QUESTIONS REPOSITORY */}
                 {route === 'page_questions' && (
-                  <div className="w-full max-w-7xl h-full flex flex-col space-y-5">
+                  <div className="w-full max-w-7xl h-full flex flex-col space-y-4">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex justify-between items-center">
                       <div>
-                        <h2 className="text-base font-bold text-white flex items-center gap-2">
-                          <i className="fa-solid fa-database text-sky-400"></i>
-                          <span>Question Repository Bank</span>
-                        </h2>
-                        <p className="text-xs text-slate-400">Manage all technical questions, SQL challenges, and associated database schemas.</p>
+                        <h2 className="text-base font-bold text-white">Modular Question Bank</h2>
+                        <p className="text-xs text-slate-400">Questions loaded from <code className="text-sky-400">data/questions.json</code></p>
                       </div>
-
-                      <button
-                        onClick={() => {
-                          setEditingQuestion({});
-                          setNewQuestionForm({
-                            title: '', schemaId: 'olist', type: 'mcq', difficulty: 'Medium', question: '',
-                            options: [{ id: 'A', text: '' }, { id: 'B', text: '' }, { id: 'C', text: '' }, { id: 'D', text: '' }],
-                            correct: 'A', explanation: ''
-                          });
-                        }}
-                        className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow-lg shadow-sky-500/20"
-                      >
-                        <i className="fa-solid fa-plus"></i>
-                        <span>Add New Question</span>
+                      <button onClick={() => exportJSONFile({ schemas, questions: questionBank }, 'questions.json')} className="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-lg flex items-center space-x-1.5">
+                        <i className="fa-solid fa-download"></i>
+                        <span>Export questions.json</span>
                       </button>
                     </div>
 
-                    {/* Question Repository Grid */}
-                    <div className="grid grid-cols-1 gap-3 overflow-y-auto max-h-[70vh] pr-1">
+                    <div className="grid grid-cols-1 gap-3 overflow-y-auto max-h-[70vh]">
                       {questionBank.map((q, idx) => (
-                        <div key={q.id} className="p-4 bg-slate-900 rounded-xl border border-slate-800 flex justify-between items-start text-xs space-x-4">
-                          <div className="space-y-1.5 flex-1">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-white text-sm">#{idx + 1}. {q.title}</span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
-                                q.difficulty === 'Easy' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
-                                q.difficulty === 'Medium' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
-                                'bg-red-950 text-red-400 border border-red-800'
-                              }`}>
-                                {q.difficulty}
-                              </span>
-                              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono uppercase">
-                                {q.type}
-                              </span>
-                            </div>
-
-                            <p className="text-slate-300 leading-relaxed">{q.question}</p>
-
-                            {q.type === 'mcq' && q.options && (
-                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800 text-[11px] font-mono">
-                                {q.options.map(opt => (
-                                  <div key={opt.id} className={`p-1.5 rounded border ${opt.id === q.correct ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
-                                    <strong>[{opt.id}]</strong> {opt.text}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex flex-col items-end space-y-2">
-                            <span className="text-[10px] font-mono text-amber-400 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                              {SCHEMAS[q.schemaId]?.name || 'Default'}
-                            </span>
-                            <div className="flex items-center space-x-1.5">
-                              <button
-                                onClick={() => {
-                                  setEditingQuestion(q);
-                                  setNewQuestionForm({ ...q });
-                                }}
-                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-semibold"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteQuestion(q.id)}
-                                className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded text-[11px] font-semibold"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
+                        <div key={q.id} className="p-4 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+                          <span className="font-bold text-white text-sm">#{idx + 1}. {q.title}</span>
+                          <p className="text-slate-300 mt-1">{q.question}</p>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* PAGE 2: EXAM TEMPLATES & LINK GENERATOR PAGE */}
-                {route === 'page_exams' && (
-                  <div className="w-full max-w-7xl h-full grid grid-cols-12 gap-6">
-                    
-                    {/* LEFT PANEL: EXAM BUILDER FORM */}
-                    <div className="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                      <div className="border-b border-slate-800 pb-3 flex justify-between items-center">
-                        <div>
-                          <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                            <i className="fa-solid fa-square-plus text-amber-400"></i>
-                            <span>{editingExamId ? 'Edit Exam Template' : 'Build Exam Template'}</span>
-                          </h3>
-                          <p className="text-xs text-slate-400">Select questions and generate assessment parameters.</p>
-                        </div>
-                        {editingExamId && (
-                          <button
-                            onClick={() => {
-                              setEditingExamId(null);
-                              setNewExamForm({
-                                title: 'Senior Data Analytics SQL Challenge',
-                                timeLimitMinutes: 20,
-                                passScore: 70,
-                                selectedQuestionIds: ['q1', 'q2', 'q6', 'q7']
-                              });
-                            }}
-                            className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded"
-                          >
-                            Cancel Edit
-                          </button>
-                        )}
-                      </div>
-
-                      <form onSubmit={handleSaveExam} className="space-y-3 text-xs">
-                        <div>
-                          <label className="block font-semibold text-slate-300 mb-1">Exam Template Title</label>
-                          <input
-                            type="text"
-                            required
-                            value={newExamForm.title}
-                            onChange={e => setNewExamForm({ ...newExamForm, title: e.target.value })}
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block font-semibold text-slate-300 mb-1">Time Limit (Mins)</label>
-                            <input
-                              type="number"
-                              required
-                              value={newExamForm.timeLimitMinutes}
-                              onChange={e => setNewExamForm({ ...newExamForm, timeLimitMinutes: e.target.value })}
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold text-slate-300 mb-1">Pass Score (%)</label>
-                            <input
-                              type="number"
-                              required
-                              value={newExamForm.passScore}
-                              onChange={e => setNewExamForm({ ...newExamForm, passScore: e.target.value })}
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block font-semibold text-slate-300 mb-1">Select Questions ({newExamForm.selectedQuestionIds.length} Selected)</label>
-                          <div className="max-h-48 overflow-y-auto bg-slate-950 p-2 rounded border border-slate-800 space-y-1">
-                            {questionBank.map(q => {
-                              const isSelected = newExamForm.selectedQuestionIds.includes(q.id);
-                              return (
-                                <label key={q.id} className="flex items-center space-x-2 text-[11px] text-slate-300 cursor-pointer hover:text-white">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setNewExamForm({ ...newExamForm, selectedQuestionIds: [...newExamForm.selectedQuestionIds, q.id] });
-                                      } else {
-                                        setNewExamForm({ ...newExamForm, selectedQuestionIds: newExamForm.selectedQuestionIds.filter(id => id !== q.id) });
-                                      }
-                                    }}
-                                    className="rounded border-slate-700 text-amber-500"
-                                  />
-                                  <span className="truncate">{q.title} ({q.difficulty})</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center space-x-1"
-                        >
-                          <i className={`fa-solid ${editingExamId ? 'fa-pen-to-square' : 'fa-link'}`}></i>
-                          <span>{editingExamId ? 'Save Exam Changes' : 'Generate Exam Template & Link'}</span>
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* RIGHT PANEL: CREATED EXAM TEMPLATES LIST WITH INCLUDED QUESTIONS INSPECTION */}
-                    <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                      <div className="border-b border-slate-800 pb-3">
-                        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                          <i className="fa-solid fa-link text-sky-400"></i>
-                          <span>Active Exam Papers & Question Breakdown</span>
-                        </h3>
-                      </div>
-
-                      <div className="space-y-4 overflow-y-auto max-h-[65vh]">
-                        {exams.map(ex => (
-                          <div key={ex.id} className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="font-bold text-white text-sm">{ex.title}</h4>
-                                <p className="text-[11px] text-slate-400">{ex.questionIds.length} Questions • {ex.timeLimitMinutes} Mins Limit • Pass Mark {ex.passScore || 70}%</p>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => handleEditExamClick(ex)}
-                                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-semibold text-[11px]"
-                                >
-                                  Edit Exam
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteExam(ex.id)}
-                                  className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-300 rounded font-semibold text-[11px]"
-                                >
-                                  Delete
-                                </button>
-                                <span className="bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-1 rounded font-mono font-bold text-xs">
-                                  {ex.accessCode}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Question List Preview inside Exam Card */}
-                            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 space-y-1.5">
-                              <span className="text-[10px] uppercase font-mono font-bold text-sky-400 block">
-                                Included Questions ({ex.questionIds.length}):
-                              </span>
-                              <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                                {ex.questionIds.map((qid, idx) => {
-                                  const qObj = questionBank.find(q => q.id === qid);
-                                  return (
-                                    <div key={qid} className="flex justify-between items-center text-[11px] bg-slate-950 p-1.5 rounded border border-slate-800/50">
-                                      <span className="truncate max-w-[320px] text-slate-300">
-                                        #{idx + 1}. {qObj ? qObj.title : qid}
-                                      </span>
-                                      {qObj && (
-                                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                                          qObj.difficulty === 'Easy' ? 'text-emerald-400' :
-                                          qObj.difficulty === 'Medium' ? 'text-amber-400' : 'text-red-400'
-                                        }`}>
-                                          {qObj.difficulty} • {qObj.type.toUpperCase()}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
-                              <span className="text-[10px] text-slate-500 font-mono truncate max-w-md">
-                                {window.location.origin}{window.location.pathname}#exam={ex.accessCode}
-                              </span>
-                              <button
-                                onClick={() => copyExamLink(ex.accessCode)}
-                                className="px-3 py-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded text-[11px] flex items-center space-x-1 shrink-0"
-                              >
-                                <i className="fa-solid fa-copy"></i>
-                                <span>Copy Link</span>
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* PAGE 3: CANDIDATE RESULTS MATRIX PAGE */}
+                {/* PAGE: RESULTS MATRIX */}
                 {route === 'page_results' && (
                   <div className="w-full max-w-7xl h-full flex flex-col space-y-4">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex justify-between items-center">
-                      <div>
-                        <h2 className="text-base font-bold text-white flex items-center gap-2">
-                          <i className="fa-solid fa-square-poll-vertical text-emerald-400"></i>
-                          <span>Candidate Assessment Results</span>
-                        </h2>
-                        <p className="text-xs text-slate-400">View real-time test submissions, candidate scores, and individual SQL code answers.</p>
-                      </div>
-
-                      <div className="text-xs font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                        Total Candidates Logged: <strong className="text-emerald-400">{submissions.length}</strong>
+                      <h2 className="text-base font-bold text-white">Candidate Assessment Results</h2>
+                      <div className="flex space-x-2">
+                        <button onClick={exportResultsCSV} className="px-3 py-1.5 bg-emerald-500 text-slate-950 font-bold text-xs rounded-lg">Export CSV</button>
+                        <button onClick={() => exportJSONFile(submissions, 'submissions.json')} className="px-3 py-1.5 bg-sky-500 text-slate-950 font-bold text-xs rounded-lg">Export JSON</button>
                       </div>
                     </div>
 
-                    {submissions.length === 0 ? (
-                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-xs text-slate-500 space-y-2">
-                        <i className="fa-regular fa-folder-open text-3xl text-slate-700"></i>
-                        <p>No candidate submissions logged yet. Share an exam access code or launch candidate screen to record a test.</p>
-                      </div>
-                    ) : (
-                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-950 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800">
-                            <tr>
-                              <th className="p-3">Candidate</th>
-                              <th className="p-3">Exam Paper</th>
-                              <th className="p-3">MCQ Score</th>
-                              <th className="p-3">Duration</th>
-                              <th className="p-3">Tab Switches</th>
-                              <th className="p-3">Submitted At</th>
-                              <th className="p-3">Action</th>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                          <tr>
+                            <th className="p-3">Candidate</th>
+                            <th className="p-3">Exam Paper</th>
+                            <th className="p-3">MCQ Score</th>
+                            <th className="p-3">Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                          {submissions.map(sub => (
+                            <tr key={sub.id}>
+                              <td className="p-3 font-medium text-white">{sub.candidateName} <br/><span className="text-[10px] text-slate-500">{sub.candidateEmail}</span></td>
+                              <td className="p-3 text-slate-400">{sub.examTitle}</td>
+                              <td className="p-3 font-mono text-emerald-400 font-bold">{sub.mcqScore} / {sub.mcqTotal} ({sub.percentage}%)</td>
+                              <td className="p-3 text-slate-500 text-[11px]">{formatTime(sub.timeTakenSeconds || 0)}</td>
                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-800 text-slate-300">
-                            {submissions.map(sub => (
-                              <tr key={sub.id} className="hover:bg-slate-950/50">
-                                <td className="p-3 font-medium text-white">
-                                  <div>{sub.candidateName}</div>
-                                  <div className="text-[10px] text-slate-500">{sub.candidateEmail}</div>
-                                </td>
-                                <td className="p-3 text-slate-400">{sub.examTitle}</td>
-                                <td className="p-3 font-mono">
-                                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded font-bold">
-                                    {sub.mcqScore} / {sub.mcqTotal} ({sub.percentage}%)
-                                  </span>
-                                </td>
-                                <td className="p-3 font-mono text-slate-400">{formatTime(sub.timeTakenSeconds || 0)}</td>
-                                <td className="p-3 font-mono">
-                                  <span className={`px-2 py-0.5 rounded font-bold ${
-                                    sub.tabSwitches > 0 ? 'bg-red-950 text-red-400 border border-red-800' : 'text-slate-500'
-                                  }`}>
-                                    {sub.tabSwitches || 0}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-slate-500 text-[11px]">{sub.submittedAt}</td>
-                                <td className="p-3">
-                                  <button
-                                    onClick={() => setSelectedSubmission(sub)}
-                                    className="px-3 py-1 bg-sky-950 text-sky-400 border border-sky-800 hover:bg-sky-900 rounded font-bold text-[11px] flex items-center space-x-1"
-                                  >
-                                    <i className="fa-solid fa-eye"></i>
-                                    <span>Inspect Breakdown</span>
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* PAGE 4: ADMIN DETAILS & SETTINGS PAGE */}
-                {route === 'page_settings' && (
-                  <div className="w-full max-w-4xl space-y-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-                      <div className="flex items-center space-x-3 border-b border-slate-800 pb-3">
-                        <i className="fa-solid fa-user-shield text-amber-400 text-xl"></i>
-                        <div>
-                          <h3 className="text-base font-bold text-white">Admin Credentials & System Configuration</h3>
-                          <p className="text-xs text-slate-400">Logged in evaluator session details and platform controls.</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
-                          <span className="text-slate-500 block">Evaluator Name</span>
-                          <span className="text-white font-bold">{adminAuth.name}</span>
-                        </div>
-                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
-                          <span className="text-slate-500 block">System Role</span>
-                          <span className="text-amber-400 font-bold">{adminAuth.role}</span>
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2 text-xs">
-                        <span className="text-sky-400 font-bold block">Database Stats & Storage</span>
-                        <div className="grid grid-cols-3 gap-2 text-[11px]">
-                          <div>Questions in Repository: <strong>{questionBank.length}</strong></div>
-                          <div>Exam Templates Active: <strong>{exams.length}</strong></div>
-                          <div>Candidate Submissions: <strong>{submissions.length}</strong></div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-2">
-                        <button
-                          onClick={() => {
-                            const exportData = { questionBank, exams, submissions };
-                            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `yassir_exam_system_backup_${Date.now()}.json`;
-                            a.click();
-                            showToast("System database exported as JSON file!");
-                          }}
-                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-lg border border-slate-700 flex items-center space-x-1.5"
-                        >
-                          <i className="fa-solid fa-download"></i>
-                          <span>Export System Database (JSON)</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setAdminAuth({ ...adminAuth, isAuthenticated: false });
-                            setRoute('candidate_entry');
-                            showToast("Admin session logged out.");
-                          }}
-                          className="px-4 py-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-bold rounded-lg flex items-center space-x-1.5"
-                        >
-                          <i className="fa-solid fa-right-from-bracket"></i>
-                          <span>Log Out Admin Session</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* MODAL: SUBMISSION DETAILED INSPECTOR */}
-                {selectedSubmission && (
-                  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[85vh] overflow-y-auto">
-                      <div className="flex justify-between items-start border-b border-slate-800 pb-3">
-                        <div>
-                          <h3 className="text-lg font-bold text-white">{selectedSubmission.candidateName}</h3>
-                          <p className="text-xs text-slate-400">{selectedSubmission.candidateEmail}</p>
-                        </div>
-                        <button onClick={() => setSelectedSubmission(null)} className="text-slate-400 hover:text-white">
-                          <i className="fa-solid fa-xmark text-lg"></i>
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                          <span className="text-slate-500 block">MCQ Score</span>
-                          <span className="text-lg font-bold text-emerald-400">{selectedSubmission.mcqScore} / {selectedSubmission.mcqTotal} ({selectedSubmission.percentage}%)</span>
-                        </div>
-                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                          <span className="text-slate-500 block">Duration</span>
-                          <span className="text-lg font-bold text-sky-400">{formatTime(selectedSubmission.timeTakenSeconds || 0)}</span>
-                        </div>
-                      </div>
-
-                      {/* Scenario Answers */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-amber-400 uppercase">Scenario & SQL Code Submissions</h4>
-                        {Object.keys(selectedSubmission.textAnswers || {}).length === 0 ? (
-                          <p className="text-xs text-slate-500 italic">No scenario questions were in this test session.</p>
-                        ) : (
-                          Object.entries(selectedSubmission.textAnswers).map(([qid, ans]) => (
-                            <div key={qid} className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2 text-xs">
-                              <span className="font-bold text-slate-300 block">Question ID: {qid}</span>
-                              {ans.flawsText && (
-                                <div>
-                                  <span className="text-slate-500 block text-[10px]">Identified Logical Bugs:</span>
-                                  <p className="text-slate-200">{ans.flawsText}</p>
-                                </div>
-                              )}
-                              {ans.sqlText && (
-                                <div>
-                                  <span className="text-slate-500 block text-[10px]">Submitted SQL Code:</span>
-                                  <pre className="p-2 bg-slate-900 font-mono text-sky-300 rounded text-[11px] overflow-x-auto">{ans.sqlText}</pre>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                    </div>
-                  </div>
-                )}
-
-                {/* MODAL: ADD / EDIT QUESTION FORM */}
-                {editingQuestion && (
-                  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4">
-                      <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                        <h3 className="text-base font-bold text-white">
-                          {editingQuestion.id ? 'Edit Question' : 'Add New Question'}
-                        </h3>
-                        <button onClick={() => setEditingQuestion(null)} className="text-slate-400 hover:text-white">
-                          <i className="fa-solid fa-xmark"></i>
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleSaveQuestion} className="space-y-3 text-xs">
-                        <div>
-                          <label className="block text-slate-400 font-semibold mb-1">Title</label>
-                          <input
-                            type="text"
-                            required
-                            value={newQuestionForm.title}
-                            onChange={e => setNewQuestionForm({ ...newQuestionForm, title: e.target.value })}
-                            placeholder="e.g. Window Function Rank"
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-400 font-semibold mb-1">Schema</label>
-                            <select
-                              value={newQuestionForm.schemaId}
-                              onChange={e => setNewQuestionForm({ ...newQuestionForm, schemaId: e.target.value })}
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                            >
-                              {Object.values(SCHEMAS).map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-400 font-semibold mb-1">Difficulty</label>
-                            <select
-                              value={newQuestionForm.difficulty}
-                              onChange={e => setNewQuestionForm({ ...newQuestionForm, difficulty: e.target.value })}
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                            >
-                              <option value="Easy">Easy</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Hard">Hard</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-400 font-semibold mb-1">Question Prompt</label>
-                          <textarea
-                            rows={3}
-                            required
-                            value={newQuestionForm.question}
-                            onChange={e => setNewQuestionForm({ ...newQuestionForm, question: e.target.value })}
-                            placeholder="Type question prompt..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                          />
-                        </div>
-
-                        <button type="submit" className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded">
-                          Save to Question Bank
-                        </button>
-                      </form>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}
 
               </main>
 
-              {/* FOOTER */}
               <footer className="h-10 border-t border-slate-900 bg-slate-950 px-6 flex items-center justify-between text-[11px] text-slate-500">
-                <div>Yassir Technical Examination System • Hosted on GitHub Pages</div>
-                <div className="font-mono">
-                  Active Page: <strong className="text-slate-300 uppercase">{route}</strong>
-                </div>
+                <div>Yassir Technical Examination System</div>
+                <div className="font-mono">Active Page: <strong className="text-slate-300 uppercase">{route}</strong></div>
               </footer>
             </div>
           );
